@@ -34,6 +34,15 @@ def test_quality_metrics_require_evidence_and_disclaimer() -> None:
     assert quality == {"evidence_count": 1, "citation_count": 1, "observed_event_source_count": 0, "cited_event_source_count": 0, "grounded": True, "has_risk_disclaimer": True}
 
 
+def test_quality_counts_only_observed_event_sources() -> None:
+    quality = agent.evaluate_research_quality(
+        "Historical association is not causation. https://invented.example",
+        [{"tool": "event_context", "result": [{"url": "https://observed.example"}]}],
+    )
+    assert quality["observed_event_source_count"] == 1
+    assert quality["cited_event_source_count"] == 0
+
+
 def test_openrouter_decision_records_usage_and_speed(monkeypatch) -> None:
     class Response:
         def raise_for_status(self) -> None:
