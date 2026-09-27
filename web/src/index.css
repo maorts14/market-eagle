@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: #0B0E14; color: #F0F4F8; font-family: Inter, ui-sans-serif, system-ui; }
+button, input { font: inherit; }
+::selection { background: #B7F34A; color: #10150A; }
+.grid-noise { background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px); background-size: 32px 32px; }
