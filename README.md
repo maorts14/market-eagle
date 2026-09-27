@@ -31,7 +31,7 @@ Questions about news, catalysts, macro conditions, or events invoke the external
 
 ## Agent runtime
 
-The research agent is a bounded Temporal state machine, not an in-process chat loop. It claims each OpenRouter decision in PostgreSQL before issuing the provider call, so a completed decision is reused during replay and an unverified interrupted call is safely ended instead of billed twice. Each allowlisted tool call is persisted independently. Configure `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env`; the default model is `openai/gpt-4.1-mini` through OpenRouter. The API exposes per-run model calls, tool calls, p50/p95 latency, token use, failed steps, guard rejections, source-citation coverage, and deterministic grounding checks at `GET /api/research/{session_id}`.
+The research agent is a bounded Temporal state machine, not an in-process chat loop. It claims each OpenRouter decision in PostgreSQL before issuing the provider call, so a completed decision is reused during replay and an unverified interrupted call is safely ended instead of billed twice. Each allowlisted tool call is persisted independently. Configure `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env`; the default model is `openrouter/free`, OpenRouter's zero-cost router for models that support the requested features. The API exposes per-run model calls, tool calls, p50/p95 latency, token use, failed steps, guard rejections, source-citation coverage, and deterministic grounding checks at `GET /api/research/{session_id}`.
 
 ## Services
 
