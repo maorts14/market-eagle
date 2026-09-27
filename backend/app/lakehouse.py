@@ -51,7 +51,7 @@ EVENT_LINK_SCHEMA = Schema(
 
 @lru_cache(maxsize=1)
 def catalog():
-    return load_catalog("market_echo", type="rest", uri=settings.iceberg_catalog_uri, warehouse="warehouse",
+    return load_catalog("market_eagle", type="rest", uri=settings.iceberg_catalog_uri, warehouse="warehouse",
         **{"s3.endpoint": settings.s3_endpoint, "s3.access-key-id": "test", "s3.secret-access-key": "test", "s3.region": "us-east-1", "s3.path-style-access": "true", "rest.client.connection-timeout-ms": "5000", "rest.client.socket-timeout-ms": "30000"})
 
 
@@ -116,7 +116,7 @@ def upsert_event_links(rows: list[dict]) -> None:
 
 
 def trino_query(sql: str) -> list[dict]:
-    connection = trino.dbapi.connect(host=settings.trino_host, port=8080, user="market_echo", catalog="iceberg")
+    connection = trino.dbapi.connect(host=settings.trino_host, port=8080, user="market_eagle", catalog="iceberg")
     cursor = connection.cursor()
     cursor.execute(sql)
     columns = [column[0] for column in cursor.description]

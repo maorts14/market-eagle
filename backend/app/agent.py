@@ -4,7 +4,7 @@ import json
 import time
 from typing import Literal
 import httpx
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from .config import settings
 
 
@@ -18,6 +18,14 @@ class AgentAction(BaseModel):
     tool: str | None = None
     answer: str | None = Field(default=None, max_length=2_000)
 
+    @model_validator(mode="after")
+    def validate_shape(self) -> "AgentAction":
+        if self.action == "tool" and (self.tool not in ALLOWED_TOOLS or self.answer is not None):
+            raise ValueError("Tool actions require one allowlisted tool and no answer.")
+        if self.action == "final" and (self.tool is not None or not self.answer):
+            raise ValueError("Final actions require an answer and no tool.")
+        return self
+
 
 @dataclass(frozen=True)
 class ModelDecision:
@@ -30,7 +38,7 @@ class ModelDecision:
 
 
 ACTION_SCHEMA = {
-    "name": "market_echo_agent_action",
+    "name": "market_eagle_agent_action",
     "strict": True,
     "schema": {
         "type": "object",
@@ -46,21 +54,21 @@ ACTION_SCHEMA = {
 
 
 def _guard_action(action: AgentAction, used_tools: list[str], observations: list[dict]) -> str | None:
-    if action.action == "tool" and action.tool not in ALLOWED_TOOLS:
-        return "Model selected a tool outside the allowlist."
     if action.action == "tool" and action.tool in used_tools:
         return "Model attempted to repeat a completed tool."
-    if action.action == "tool" and action.answer is not None:
-        return "Tool actions must not include an answer."
-    if action.action == "final" and not action.answer:
-        return "Final actions require a non-empty answer."
     if action.action == "final" and not observations:
         return "Final answers require at least one evidence observation."
     if action.action == "final" and "not causation" not in action.answer.lower():
         return "Final answers must include the historical-association risk disclaimer."
-    has_event_evidence = any(item.get("tool") == "event_context" and isinstance(item.get("result"), list) and item["result"] for item in observations)
-    if action.action == "final" and has_event_evidence and "http" not in action.answer:
-        return "Final answers using event evidence must preserve a source URL."
+    event_urls = {
+        item["url"]
+        for observation in observations
+        if observation.get("tool") == "event_context" and isinstance(observation.get("result"), list)
+        for item in observation["result"]
+        if isinstance(item, dict) and isinstance(item.get("url"), str)
+    }
+    if action.action == "final" and event_urls and not any(url in action.answer for url in event_urls):
+        return "Final answers using event evidence must cite an observed source URL."
     return None
 
 
@@ -77,9 +85,19 @@ def _messages(question: str, observations: list[dict], used_tools: list[str]) ->
 
 def evaluate_research_quality(answer: str, observations: list[dict]) -> dict:
     evidence_count = sum(len(item["result"]) for item in observations if isinstance(item.get("result"), list))
+    event_urls = {
+        item["url"]
+        for observation in observations
+        if observation.get("tool") == "event_context" and isinstance(observation.get("result"), list)
+        for item in observation["result"]
+        if isinstance(item, dict) and isinstance(item.get("url"), str)
+    }
+    cited_event_urls = sum(url in answer for url in event_urls)
     return {
         "evidence_count": evidence_count,
         "citation_count": answer.count("http://") + answer.count("https://"),
+        "observed_event_source_count": len(event_urls),
+        "cited_event_source_count": cited_event_urls,
         "grounded": evidence_count > 0,
         "has_risk_disclaimer": "not causation" in answer.lower(),
     }

@@ -4,7 +4,7 @@ import os
 
 @dataclass(frozen=True)
 class Settings:
-    database_url: str = os.getenv("DATABASE_URL", "postgresql+psycopg://market:market@localhost:5432/market_echo")
+    database_url: str = os.getenv("DATABASE_URL", "postgresql+psycopg://market:market@localhost:5432/market_eagle")
     temporal_address: str = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
     temporal_namespace: str = os.getenv("TEMPORAL_NAMESPACE", "default")
     task_queue: str = os.getenv("TEMPORAL_TASK_QUEUE", "market-eagle")

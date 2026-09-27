@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
+import math
 import json
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException
@@ -8,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from temporalio.client import Client
 from .config import settings
-from .database import SessionLocal, init_database
+from .database import SessionLocal
 from .lakehouse import trino_query
 from .lakehouse import ensure_lakehouse
 from .models import AgentStep, AnalysisRun, Instrument, PipelineRun, ResearchSession
@@ -18,7 +19,6 @@ from .workflows import DailyCollectionWorkflow, HistoricalBackfillWorkflow, Rese
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    init_database()
     ensure_lakehouse()
     yield
 
@@ -29,6 +29,17 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allo
 
 class ResearchRequest(BaseModel):
     question: str = Field(min_length=4, max_length=1000)
+
+
+def _latency_metrics(steps: list[AgentStep]) -> dict:
+    values = sorted(step.latency_ms for step in steps)
+    if not values:
+        return {"total_ms": 0, "p50_ms": 0, "p95_ms": 0}
+    return {
+        "total_ms": sum(values),
+        "p50_ms": values[math.ceil(len(values) * 0.5) - 1],
+        "p95_ms": values[math.ceil(len(values) * 0.95) - 1],
+    }
 
 
 async def temporal_client() -> Client:
@@ -139,11 +150,18 @@ def research_status(session_id: str) -> dict:
             raise HTTPException(status_code=404, detail="Research session not found")
         steps = session.scalars(select(AgentStep).where(AgentStep.session_id == session_id).order_by(AgentStep.step_index, AgentStep.id)).all()
     decision_steps = [step for step in steps if step.kind == "decision"]
+    tool_steps = [step for step in steps if step.kind == "tool"]
     final_step = next((step for step in reversed(steps) if step.kind == "final"), None)
+    model_latency = _latency_metrics(decision_steps)
+    tool_latency = _latency_metrics(tool_steps)
     metrics = {
-        "model_calls": len(decision_steps), "tool_calls": len([step for step in steps if step.kind == "tool"]),
+        "model_calls": len(decision_steps), "tool_calls": len(tool_steps),
         "guard_rejections": len([step for step in decision_steps if step.status == "guarded"]),
-        "model_latency_ms": sum(step.latency_ms for step in decision_steps),
+        "failed_steps": len([step for step in steps if step.status == "failed"]),
+        "model_latency_ms": model_latency["total_ms"],
+        "tool_latency_ms": tool_latency["total_ms"],
+        "model_latency": model_latency,
+        "tool_latency": tool_latency,
         "prompt_tokens": sum(step.prompt_tokens for step in decision_steps),
         "completion_tokens": sum(step.completion_tokens for step in decision_steps),
         "quality": final_step.payload if final_step else None,

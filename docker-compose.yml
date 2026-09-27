@@ -53,7 +53,7 @@ services:
   market-db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: market_echo
+      POSTGRES_DB: market_eagle
       POSTGRES_USER: market
       POSTGRES_PASSWORD: market
     ports:
@@ -61,7 +61,7 @@ services:
     volumes:
       - market-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U market -d market_echo"]
+      test: ["CMD-SHELL", "pg_isready -U market -d market_eagle"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -104,11 +104,20 @@ services:
     ports:
       - "8233:8080"
 
+  migrate:
+    build: ./backend
+    command: alembic upgrade head
+    environment:
+      DATABASE_URL: postgresql+psycopg://market:market@market-db:5432/market_eagle
+    depends_on:
+      market-db:
+        condition: service_healthy
+
   api:
     build: ./backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
-      DATABASE_URL: postgresql+psycopg://market:market@market-db:5432/market_echo
+      DATABASE_URL: postgresql+psycopg://market:market@market-db:5432/market_eagle
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_TASK_QUEUE: market-eagle
       MARKET_EAGLE_DATA_MODE: ${MARKET_EAGLE_DATA_MODE:-demo}
@@ -127,6 +136,8 @@ services:
     depends_on:
       market-db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       temporal:
         condition: service_started
       iceberg-rest:
@@ -139,7 +150,7 @@ services:
     command: python -m app.worker
     restart: on-failure
     environment:
-      DATABASE_URL: postgresql+psycopg://market:market@market-db:5432/market_echo
+      DATABASE_URL: postgresql+psycopg://market:market@market-db:5432/market_eagle
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_TASK_QUEUE: market-eagle
       MARKET_EAGLE_DATA_MODE: ${MARKET_EAGLE_DATA_MODE:-demo}
@@ -156,6 +167,8 @@ services:
     depends_on:
       market-db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       temporal:
         condition: service_started
       iceberg-rest:

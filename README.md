@@ -16,6 +16,8 @@ PostgreSQL <──────────────────────�
 
 All long-running work is a Temporal workflow: historical backfill, daily collection, daily analyst brief, and the tool-using research-agent loop.
 
+Application schema changes are versioned with Alembic. The local Compose stack runs the one-shot `migrate` service before the API and worker start; normal agent activities never issue schema DDL.
+
 ## Run locally
 
 1. Copy `.env.example` to `.env` (the committed defaults are safe for local use).
@@ -29,7 +31,7 @@ Questions about news, catalysts, macro conditions, or events invoke the external
 
 ## Agent runtime
 
-The research agent is a bounded Temporal state machine, not an in-process chat loop. Each OpenRouter model decision and each allowlisted tool call is persisted independently, so a worker crash resumes from the next unfinished step. Configure `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env`; the default model is `openai/gpt-4.1-mini` through OpenRouter. The API exposes per-run model calls, tool calls, latency, token use, guard rejections, and deterministic grounding checks at `GET /api/research/{session_id}`.
+The research agent is a bounded Temporal state machine, not an in-process chat loop. It claims each OpenRouter decision in PostgreSQL before issuing the provider call, so a completed decision is reused during replay and an unverified interrupted call is safely ended instead of billed twice. Each allowlisted tool call is persisted independently. Configure `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env`; the default model is `openai/gpt-4.1-mini` through OpenRouter. The API exposes per-run model calls, tool calls, p50/p95 latency, token use, failed steps, guard rejections, source-citation coverage, and deterministic grounding checks at `GET /api/research/{session_id}`.
 
 ## Services
 

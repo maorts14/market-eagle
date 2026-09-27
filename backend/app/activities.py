@@ -7,7 +7,7 @@ from temporalio import activity
 from sqlalchemy import desc, select
 from sqlalchemy.dialects.postgresql import insert
 from .config import settings
-from .database import SessionLocal, init_database
+from .database import SessionLocal
 from .market_data import fetch_daily_bars
 from .event_research import EventResearchRateLimited, fetch_event_articles
 from .lakehouse import append_brief, append_raw_bars, append_relationships, ensure_lakehouse, load_daily_bars, trino_query, upsert_daily_bars, upsert_event_articles, upsert_event_links
@@ -17,7 +17,6 @@ from .universe import TRACKED_INSTRUMENTS, UNIVERSE
 
 
 def _start_run(run_id: str, workflow_type: str) -> None:
-    init_database()
     with SessionLocal.begin() as session:
         session.execute(insert(PipelineRun).values(id=run_id, workflow_type=workflow_type, status="running", detail={}).on_conflict_do_nothing())
 
@@ -25,7 +24,6 @@ def _start_run(run_id: str, workflow_type: str) -> None:
 @activity.defn
 def register_universe() -> int:
     """Cold-path setup: one write statement for all canonical instruments."""
-    init_database()
     ensure_lakehouse()
     with SessionLocal.begin() as session:
         session.execute(insert(Instrument).values([
@@ -38,7 +36,6 @@ def register_universe() -> int:
 @activity.defn
 def collect_symbol(payload: dict) -> dict:
     """Worker-triggered ingestion; one source read, then one bulk upsert write."""
-    init_database()
     symbol, start, end, run_id = payload["symbol"], date.fromisoformat(payload["start"]), date.fromisoformat(payload["end"]), payload["run_id"]
     _start_run(run_id, payload["workflow_type"])
     bars = fetch_daily_bars(symbol, start, end, settings.data_mode)
@@ -52,7 +49,6 @@ def collect_symbol(payload: dict) -> dict:
 
 @activity.defn
 def complete_pipeline_run(payload: dict) -> None:
-    init_database()
     with SessionLocal.begin() as session:
         session.execute(
             PipelineRun.__table__.update().where(PipelineRun.id == payload["run_id"]).values(
@@ -78,7 +74,6 @@ def _correlation(left: list[float], right: list[float]) -> float | None:
 @activity.defn
 def calculate_relationships(payload: dict) -> dict:
     """Analysis worker: 12 reads (one per sector) and batched writes for an analysis snapshot."""
-    init_database()
     run_id, window_days = payload["run_id"], payload.get("window_days", 60)
     lake_rows = load_daily_bars()
     with SessionLocal.begin() as session:
@@ -108,7 +103,6 @@ def calculate_relationships(payload: dict) -> dict:
 
 @activity.defn
 def write_daily_brief(payload: dict) -> dict:
-    init_database()
     analysis_run_id = payload["analysis_run_id"]
     with SessionLocal() as session:
         run = session.get(AnalysisRun, analysis_run_id)
@@ -132,7 +126,6 @@ def write_daily_brief(payload: dict) -> dict:
 
 @activity.defn
 def create_research_session(payload: dict) -> None:
-    init_database()
     with SessionLocal.begin() as session:
         session.merge(ResearchSession(id=payload["session_id"], question=payload["question"], status="running", plan=[], observations=[]))
 
@@ -146,56 +139,91 @@ def _record_agent_step(payload: dict) -> None:
         session.execute(statement)
 
 
+def _claim_agent_decision(payload: dict) -> tuple[AgentStep, bool]:
+    """Claim one provider call before it is issued, making retries safe and inspectable."""
+    values = {
+        "session_id": payload["session_id"], "step_index": payload["step_index"], "kind": "decision", "status": "running",
+        "model": None, "tool": None, "latency_ms": 0, "prompt_tokens": 0, "completion_tokens": 0, "payload": {},
+    }
+    with SessionLocal.begin() as session:
+        step_id = session.execute(
+            insert(AgentStep).values(values).on_conflict_do_nothing(
+                constraint="uq_agent_step_session_index_kind"
+            ).returning(AgentStep.id)
+        ).scalar_one_or_none()
+        if step_id is not None:
+            return session.get(AgentStep, step_id), True
+        step = session.scalars(select(AgentStep).where(
+            AgentStep.session_id == payload["session_id"], AgentStep.step_index == payload["step_index"], AgentStep.kind == "decision",
+        )).one()
+        return step, False
+
+
+def _finish_claimed_decision(step_id: int, status: str, model: str | None, tool: str | None, latency_ms: int, prompt_tokens: int, completion_tokens: int, detail: dict) -> bool:
+    """Only the active claim may resolve a decision; a late worker cannot overwrite a safe terminal result."""
+    with SessionLocal.begin() as session:
+        result = session.execute(
+            AgentStep.__table__.update().where(AgentStep.id == step_id, AgentStep.status == "running").values(
+                status=status, model=model, tool=tool, latency_ms=latency_ms, prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens, payload=detail,
+            )
+        )
+        return result.rowcount == 1
+
+
 @activity.defn
 def decide_agent_action(payload: dict) -> dict:
     """One model turn. Its decision is persisted before Temporal advances the agent loop."""
-    init_database()
+    step, claimed = _claim_agent_decision(payload)
+    if not claimed:
+        action = step.payload.get("action")
+        if step.status != "running" and isinstance(action, dict):
+            return action
+        interrupted = {"action": "final", "tool": None, "answer": "A prior model request was interrupted before it could be verified, so no market conclusion was produced."}
+        _finish_claimed_decision(step.id, "failed", None, None, step.latency_ms, step.prompt_tokens, step.completion_tokens,
+                                 {"action": interrupted, "error": "Unverified prior provider request was not retried."})
+        return interrupted
+    started = time.perf_counter()
     try:
         decision = decide_with_openrouter(payload["question"], payload["observations"], payload["used_tools"], payload["session_id"])
     except Exception as error:
         action = {"action": "final", "tool": None, "answer": "The model provider was unavailable, so no market conclusion was produced."}
-        _record_agent_step({"session_id": payload["session_id"], "step_index": payload["step_index"], "kind": "decision", "status": "failed", "model": None, "tool": None,
-                            "latency_ms": 0, "prompt_tokens": 0, "completion_tokens": 0, "payload": {"error": str(error)}})
+        _finish_claimed_decision(step.id, "failed", None, None, round((time.perf_counter() - started) * 1000), 0, 0,
+                                 {"action": action, "error": type(error).__name__})
         return action
-    action = decision.action.model_dump()
+    provider_action = decision.action.model_dump()
+    action = provider_action
     status = "guarded" if decision.guard_reason else "completed"
-    _record_agent_step({"session_id": payload["session_id"], "step_index": payload["step_index"], "kind": "decision", "status": status, "model": decision.model, "tool": decision.action.tool,
-                        "latency_ms": decision.latency_ms, "prompt_tokens": decision.prompt_tokens, "completion_tokens": decision.completion_tokens,
-                        "payload": {"action": action, "guard_reason": decision.guard_reason}})
     if decision.guard_reason:
-        if decision.model == "unconfigured":
-            return action
-        return {"action": "final", "tool": None, "answer": "The model produced an unsafe or invalid research action, so no market conclusion was produced."}
+        if decision.model != "unconfigured":
+            action = {"action": "final", "tool": None, "answer": "The model produced an unsafe or invalid research action, so no market conclusion was produced."}
+    if not _finish_claimed_decision(step.id, status, decision.model, decision.action.tool, decision.latency_ms, decision.prompt_tokens,
+                                    decision.completion_tokens, {"action": action, "provider_action": provider_action, "guard_reason": decision.guard_reason}):
+        with SessionLocal() as session:
+            persisted = session.get(AgentStep, step.id)
+        if persisted and isinstance(persisted.payload.get("action"), dict):
+            return persisted.payload["action"]
+        return {"action": "final", "tool": None, "answer": "The model provider was unavailable, so no market conclusion was produced."}
     return action
 
 
 @activity.defn
 def execute_agent_tool(payload: dict) -> dict:
     """One allowlisted read-only tool turn, measured and recorded separately from planning."""
-    init_database()
     started = time.perf_counter()
-    result = use_research_tool({"tool": payload["tool"]})
-    _record_agent_step({"session_id": payload["session_id"], "step_index": payload["step_index"], "kind": "tool", "status": "completed", "model": None, "tool": payload["tool"],
-                        "latency_ms": round((time.perf_counter() - started) * 1000), "prompt_tokens": 0, "completion_tokens": 0, "payload": result})
+    try:
+        result = use_research_tool({"tool": payload["tool"]})
+        status, detail = "completed", result
+    except Exception as error:
+        result = {"tool": payload["tool"], "result": "The research tool was unavailable for this turn."}
+        status, detail = "failed", {"result": result, "error": type(error).__name__}
+    _record_agent_step({"session_id": payload["session_id"], "step_index": payload["step_index"], "kind": "tool", "status": status, "model": None, "tool": payload["tool"],
+                        "latency_ms": round((time.perf_counter() - started) * 1000), "prompt_tokens": 0, "completion_tokens": 0, "payload": detail})
     return result
 
 
 @activity.defn
-def plan_research(payload: dict) -> list[str]:
-    question = payload["question"].lower()
-    plan = ["recent_performance"]
-    if any(word in question for word in ["follow", "lead", "relationship", "correlat"]):
-        plan.append("sector_relationships")
-    if any(word in question for word in ["event", "news", "why", "catalyst", "happen", "world", "macro", "headline"]):
-        plan.append("event_context")
-    if any(symbol.lower() in question for symbol, _, _ in TRACKED_INSTRUMENTS):
-        plan.append("instrument_history")
-    return plan
-
-
-@activity.defn
 def use_research_tool(payload: dict) -> dict:
-    init_database()
     tool = payload["tool"]
     if tool == "sector_relationships":
         with SessionLocal() as session:
@@ -249,7 +277,6 @@ def use_research_tool(payload: dict) -> dict:
 
 @activity.defn
 def complete_research_session(payload: dict) -> str:
-    init_database()
     observations = payload["observations"]
     answer = payload["answer"]
     if "not causation" not in answer.lower():
@@ -257,6 +284,12 @@ def complete_research_session(payload: dict) -> str:
     quality = evaluate_research_quality(answer, observations)
     with SessionLocal.begin() as session:
         session.execute(ResearchSession.__table__.update().where(ResearchSession.id == payload["session_id"]).values(status="completed", plan=payload["plan"], observations=observations, answer=answer))
-    _record_agent_step({"session_id": payload["session_id"], "step_index": payload["step_index"], "kind": "final", "status": "completed", "model": payload.get("model"), "tool": None,
-                        "latency_ms": 0, "prompt_tokens": 0, "completion_tokens": 0, "payload": quality})
+        session.execute(insert(AgentStep).values(
+            session_id=payload["session_id"], step_index=payload["step_index"], kind="final", status="completed", model=payload.get("model"), tool=None,
+            latency_ms=0, prompt_tokens=0, completion_tokens=0, payload=quality,
+        ).on_conflict_do_update(
+            constraint="uq_agent_step_session_index_kind",
+            set_={"status": "completed", "model": payload.get("model"), "tool": None, "latency_ms": 0, "prompt_tokens": 0,
+                  "completion_tokens": 0, "payload": quality},
+        ))
     return answer

@@ -7,6 +7,7 @@ name = "market-eagle"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+  "alembic>=1.14,<2",
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
   "psycopg[binary]>=3.2,<4",
