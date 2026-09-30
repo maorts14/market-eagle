@@ -13,10 +13,11 @@ class Settings:
     s3_endpoint: str = os.getenv("S3_ENDPOINT", "http://localhost:4566")
     trino_host: str = os.getenv("TRINO_HOST", "localhost")
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
-    openrouter_model: str = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+    openrouter_model: str = os.getenv("OPENROUTER_MODEL", "liquid/lfm-2.5-2.6b:free")
     openrouter_base_url: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     openrouter_site_url: str = os.getenv("OPENROUTER_SITE_URL", "http://localhost:5173")
     openrouter_timeout_seconds: float = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "30"))
+    openrouter_max_tokens: int = int(os.getenv("OPENROUTER_MAX_TOKENS", "1024"))
 
 
 settings = Settings()

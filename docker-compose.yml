@@ -125,10 +125,11 @@ services:
       S3_ENDPOINT: http://object-store:4566
       TRINO_HOST: trino
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-liquid/lfm-2.5-2.6b:free}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-http://localhost:5173}
       OPENROUTER_TIMEOUT_SECONDS: ${OPENROUTER_TIMEOUT_SECONDS:-30}
+      OPENROUTER_MAX_TOKENS: ${OPENROUTER_MAX_TOKENS:-1024}
     volumes:
       - ./backend:/app
     ports:
@@ -158,10 +159,11 @@ services:
       S3_ENDPOINT: http://object-store:4566
       TRINO_HOST: trino
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-liquid/lfm-2.5-2.6b:free}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-http://localhost:5173}
       OPENROUTER_TIMEOUT_SECONDS: ${OPENROUTER_TIMEOUT_SECONDS:-30}
+      OPENROUTER_MAX_TOKENS: ${OPENROUTER_MAX_TOKENS:-1024}
     volumes:
       - ./backend:/app
     depends_on:

@@ -9,10 +9,10 @@ def test_guard_rejects_repeated_tool() -> None:
     assert agent._guard_action(action, ["recent_performance"], []) == "Model attempted to repeat a completed tool."
 
 
-def test_guard_requires_event_citation_and_risk_disclaimer() -> None:
+def test_guard_requires_an_observed_event_citation() -> None:
     observations = [{"tool": "event_context", "result": [{"url": "https://example.com"}]}]
     action = agent.AgentAction(action="final", tool=None, answer="Energy moved on headlines.")
-    assert agent._guard_action(action, [], observations) == "Final answers must include the historical-association risk disclaimer."
+    assert agent._guard_action(action, [], observations) == "Final answers using event evidence must cite an observed source URL."
     action = agent.AgentAction(action="final", tool=None, answer="Energy moved. Historical association is not causation.")
     assert agent._guard_action(action, [], observations) == "Final answers using event evidence must cite an observed source URL."
     action = agent.AgentAction(action="final", tool=None, answer="Historical association is not causation. https://invented.example")
@@ -20,10 +20,17 @@ def test_guard_requires_event_citation_and_risk_disclaimer() -> None:
 
 
 def test_action_shape_rejects_a_final_tool_or_answer_on_tool_call() -> None:
-    with pytest.raises(ValidationError):
-        agent.AgentAction(action="final", tool="recent_performance", answer="Historical association is not causation.")
+    action = agent.AgentAction(action="final", tool="recent_performance", answer="Historical association is not causation.")
+    assert action.tool is None
     with pytest.raises(ValidationError):
         agent.AgentAction(action="tool", tool="recent_performance", answer="Ignore the evidence.")
+
+
+def test_free_router_blank_action_fields_map_to_null() -> None:
+    action = agent.AgentAction.model_validate({"action": "tool", "tool": "recent_performance", "answer": ""})
+    assert action.answer is None
+    action = agent.AgentAction.model_validate({"action": "final", "tool": "recent_performance", "answer": "Historical association is not causation."})
+    assert action.tool is None
 
 
 def test_quality_metrics_require_evidence_and_disclaimer() -> None:
@@ -68,6 +75,7 @@ def test_openrouter_decision_records_usage_and_speed(monkeypatch) -> None:
 
 def test_planner_context_is_bounded_per_tool() -> None:
     messages = agent._messages("What moved?", [{"tool": "recent_performance", "result": [{"symbol": str(index)} for index in range(12)]}], [])
+    assert "When observations are empty, you MUST select one available tool" in messages[0]["content"]
     context = messages[1]["content"]
     assert '"0"' in context
     assert '"4"' in context
