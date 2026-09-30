@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { createRoot } from "react-dom/client";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Activity, ArrowDownRight, ArrowUpRight, Bot, Database, ExternalLink, Network, Play, RefreshCw, Search, Sparkles } from "lucide-react";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { cn } from "./lib/utils";
+import "./index.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 type Overview = { as_of_date: string | null; bar_count: number; relationship_count: number; latest_brief: { headline: string; body: string; evidence: Record<string, unknown>; as_of_date: string } | null; runs: { id: string; type: string; status: string; started_at: string }[] };
@@ -102,3 +104,5 @@ function App() {
 }
 
 export default App;
+
+createRoot(document.getElementById("root")!).render(<App />);
