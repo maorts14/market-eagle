@@ -19,12 +19,16 @@ class PostgresAnalyticsRepository:
         feed: str,
         price_basis: str,
         exchange: str,
+        statement_timeout_ms: int = 30_000,
     ) -> None:
         self.database_url = database_url
         self.source = source
         self.feed = feed
         self.price_basis = price_basis
         self.exchange = exchange
+        if statement_timeout_ms < 1:
+            raise ValueError("statement timeout must be positive")
+        self.statement_timeout_ms = statement_timeout_ms
 
     def load(self, start: date, end: date) -> AnalyticsDataset:
         with (
@@ -34,6 +38,10 @@ class PostgresAnalyticsRepository:
             conn.transaction(),
         ):
             conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            conn.execute(
+                "SELECT set_config('statement_timeout', %s, true)",
+                (str(self.statement_timeout_ms),),
+            )
             snapshot = conn.execute(
                 """SELECT s.snapshot_id, s.as_of, s.published_at
                        FROM catalog_current c
