@@ -15,10 +15,14 @@ def main() -> None:
     args = parser.parse_args()
     if not args.database_url:
         parser.error("DATABASE_URL or --database-url is required")
-    migration = Path(__file__).resolve().parents[3] / "database" / "migrations" / "001_market_data.sql"
-    with psycopg.connect(args.database_url) as conn:
-        with conn.transaction():
-            conn.execute(migration.read_text(encoding="utf-8"))
+    migration = (
+        Path(__file__).resolve().parents[3]
+        / "database"
+        / "migrations"
+        / "001_market_data.sql"
+    )
+    with psycopg.connect(args.database_url) as conn, conn.transaction():
+        conn.execute(migration.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
