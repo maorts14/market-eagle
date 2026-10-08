@@ -1,0 +1,34 @@
+# Knowledge base
+
+This directory is the product and architecture baseline for the rebuild on the `definition` branch. The existing application is a reference prototype, not the target design. The definition is ready to commit and push; documented provider, price-policy, and operating-value checks remain for implementation and release. No authenticated provider probe is required to publish this definition.
+
+For the system's logical order, read [product-direction.md](product-direction.md) → [domain-language.md](domain-language.md) → [system-architecture.md](system-architecture.md) → [workflows.md](workflows.md) → [data-model.md](data-model.md) → [analysis-scope.md](analysis-scope.md). The [seven-page diagram](diagrams/market-eagle-architecture.drawio) follows the same paths. [decision-tree.md](decision-tree.md) separates accepted choices from unresolved ones.
+
+| File | Purpose |
+| --- | --- |
+| [product-direction.md](product-direction.md) | Agreed goals, audience, and initial scope |
+| [domain-language.md](domain-language.md) | Canonical domain vocabulary as terms are resolved |
+| [analysis-scope.md](analysis-scope.md) | Trader research jobs, candidate questions, and open metric definitions |
+| [interaction-proposal.md](interaction-proposal.md) | Accepted first workspace and drilldown interaction |
+| [agent-design.md](agent-design.md) | Agent behavior goals and decisions to resolve in the separate design chat |
+| [data-and-query-boundary.md](data-and-query-boundary.md) | Stored observations versus calculated analysis results |
+| [prototype-assessment.md](prototype-assessment.md) | What the current code actually does and what it implies for the rebuild |
+| [external-research.md](external-research.md) | Verified external facts and source links |
+| [market-data-api-evaluation.md](market-data-api-evaluation.md) | Provider comparison, recommendation, rights, and required API probe |
+| [decision-tree.md](decision-tree.md) | Open design decisions and their dependencies |
+| [system-architecture.md](system-architecture.md) | Full-system architecture blueprint and service boundaries |
+| [diagrams/market-eagle-architecture.drawio](diagrams/market-eagle-architecture.drawio) | Editable seven-page draw.io architecture workbook |
+| [data-model.md](data-model.md) | Storage ownership, entities, keys, and query indexes |
+| [storage-rationale.md](storage-rationale.md) | PostgreSQL versus Iceberg decision and raw archive explanation |
+| [workflows.md](workflows.md) | Ordered catalog, price, explorer, and later agent flows with Temporal's control role |
+| [operations-and-load.md](operations-and-load.md) | Capacity, load controls, reliability, security, and deployment |
+| [technology-tradeoffs.md](technology-tradeoffs.md) | Storage, query engine, workflow, deployment, and framework comparisons |
+| [homelab-inventory.sh](homelab-inventory.sh) | Read-only Linux hardware and runtime inventory script |
+
+The accepted product behavior, analytical contract, and service boundaries are recorded here. Some storage, provider, and deployment mechanisms remain proposals and are labeled in their files. The root `README.md` describes the reference prototype; its old `docs/architecture.md` has been retired because it described a different Iceberg/Trino product.
+
+## Handoff gates after the definition is pushed
+
+- **Provider validation:** Alpaca Basic and FMP are documented candidates, not verified sources. During implementation, use authenticated read-only probes to check actual account access, current-day and after-close bar updates, pagination, catalog coverage, and usage rights. See [market-data-api-evaluation.md](market-data-api-evaluation.md).
+- **Market-data policy:** preserve source/feed/basis and provisional status in every observation and answer. Confirm provider finality, bar selection, and freshness rules from the probe. Split treatment is intentionally deferred in [issue #3](https://github.com/maorts14/market-eagle/issues/3); do not present an unchosen return basis as a trusted final metric. The dollar-volume proxy is the current rule, with later review in [issue #4](https://github.com/maorts14/market-eagle/issues/4).
+- **Operating and release values:** measure provider and homelab limits during implementation; choose broader answer-quality thresholds from a human-labeled baseline before release. The agent's core factual and permission tests are already required by [agent-harness-contract.md](agent-harness-contract.md).

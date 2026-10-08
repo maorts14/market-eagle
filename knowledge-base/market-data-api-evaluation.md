@@ -1,0 +1,48 @@
+# Market-data API evaluation
+
+Documentation review: **2026-10-08**. This compares official provider documentation with the [accepted requirements](decision-tree.md) and [workflow design](workflows.md). No authenticated API request or license confirmation has been performed. **Alpaca Basic remains a private-development candidate, not a verified provider selection.** This documentation review is sufficient for the definition handoff; the authenticated checks below belong to implementation validation.
+
+## Required fit
+
+- A dated catalog of current S&P 500 traded securities and sourced sectors.
+- Five years of daily OHLCV plus the close preceding the earliest selectable session.
+- One cumulative, provisional current-day bar refreshed about hourly during regular US hours and checked after close while the provider still updates that day's bar, with source and as-of time.
+- Provider daily-bar price/volume conventions, a consistent feed, and a defensible dollar-volume input. The accepted volume follows the provider's same-day bar and may include extended-hours trades.
+- Zero monthly data cost for the creator's private homelab; a separately licensed path for later trader-facing use.
+
+## Alpaca Basic: official-documentation fit
+
+**Documented** describes published capability or limitation, not a successful account probe. **Probe** means a product-critical behavior or entitlement remains unresolved.
+
+| Requirement | Finding | Status |
+| --- | --- | --- |
+| Five years of daily prices | Basic lists historical US stock/ETF data **since 2016**, a latest-15-minute historical restriction, and 200 historical calls/minute. The requested span, including a preceding close, fits on paper. [Plan](https://docs.alpaca.markets/us/docs/about-market-data-api). | Documented; probe coverage and quality. |
+| Five stocks × five years per backfill activity | `/v2/stocks/bars` accepts comma-separated symbols, `1Day`, and `limit` up to 10,000 **total** bars per page. It may return fewer than the limit and sorts by symbol before timestamp. Follow every `next_page_token`. About 6,300 expected bars could fit one page, but one page is not guaranteed. [Historical bars](https://docs.alpaca.markets/us/reference/stockbars). | Documented; probe pages, latency, bytes, retries. |
+| Full-market delayed feed | Basic gives real-time **IEX only**; historical SIP can be queried when `end` is at least 15 minutes old. Specify `feed=sip` for history and do not silently combine IEX and SIP. The FAQ shows material volume differences. [Plan](https://docs.alpaca.markets/us/docs/about-market-data-api), [FAQ](https://docs.alpaca.markets/us/docs/market-data-faq). | Documented. |
+| Hourly cumulative bar for today | Historical `end` defaults to 15 minutes ago without real-time entitlement, but the endpoint does not promise a cumulative current-day `1Day` bar. [Multi-symbol snapshots](https://docs.alpaca.markets/us/reference/stocksnapshots-1) document `dailyBar`, `prevDailyBar`, and `feed=delayed_sip`; the [FAQ](https://docs.alpaca.markets/us/docs/market-data-faq) says latest endpoints require subscription for `feed=sip`. Neither statement establishes Basic entitlement to **delayed** SIP snapshots or their cutoff behavior. | Probe historical `1Day`, then delayed SIP snapshots. |
+| Provider daily bar with after-hours volume | Alpaca's [trade-condition rules](https://docs.alpaca.markets/us/docs/market-data-faq) say extended-hours conditions `T` and `U` can **increase the same daily bar's volume** without updating its prices. The user accepted following this changing volume in the provider's daily candle. Minute bars apply different extended-hours price rules. | Documented aggregation rule; probe when revised values become available through Basic. |
+| Daily VWAP and exact traded notional | The [FAQ](https://docs.alpaca.markets/us/docs/market-data-faq) shows `vw` in bar examples. VWAP uses trades updating both high/low and volume; `v` can include other trades. The documented daily bar does not include exact traded notional. `v × vw` is therefore an **estimate**, not exact all-trade notional. | VWAP documented; exact notional unverified. |
+| Adjustments and ticker changes | Historical bars support `raw`, `split`, `dividend`, `spin-off`, `all`, and comma-separated combinations. `asof` maps tickers across a rename; the FAQ says new historical mapping is available the day **after** a rename. Return basis remains [deferred](https://github.com/maorts14/market-eagle/issues/3). [Endpoint](https://docs.alpaca.markets/us/reference/stockbars), [FAQ](https://docs.alpaca.markets/us/docs/market-data-faq). | Documented; probe splits and renames. |
+| Private and later commercial use | Published [Terms and Conditions](https://files.alpaca.markets/disclosures/library/TermsAndConditions.pdf) describe personal, non-commercial use and a notice requirement before making a user application available to others. The [customer agreement](https://files.alpaca.markets/disclosures/library/AcctAppMarginAndCustAgmt.pdf) restricts reproducing, distributing, selling, or commercially exploiting market data without written consent. Applicable account terms and derived-display rights need confirmation. | Private use appears plausible under applicable terms; trader-facing use is **not cleared**. |
+
+The [accepted dollar-volume rule](decision-tree.md) prefers provider-reported traded notional, then `shares × daily VWAP`, then `shares × daily close`. Both fallbacks require an estimate label. Alpaca's VWAP denominator can differ from its bar volume, so the VWAP product must never be presented as exact traded notional. [Issue #4](https://github.com/maorts14/market-eagle/issues/4) tracks provider verification and any change to this rule.
+
+## FMP for constituents and sectors
+
+Alpaca bars do not establish S&P 500 membership or sectors. FMP publishes a [current constituent endpoint](https://site.financialmodelingprep.com/developer/docs/stable/sp-500) with symbol, name, sector, sub-sector, and `dateFirstAdded` in its sample response. This documents the **response shape**, not Basic-plan access, complete/correct current membership, or an official GICS taxonomy. Test a free key and compare returned share lines and sectors with an independent dated source. The [S&P DJI index page](https://www.spglobal.com/spdji/en/indices/equity/sp-500/) explains why 500 companies need not mean exactly 500 stock symbols.
+
+FMP's [pricing page](https://site.financialmodelingprep.com/developer/docs/pricing) describes Basic as free with 250 calls/day and end-of-day data. Its comparison table lists five years of history for Basic, while product descriptions assign historical stock price data to Starter; endpoint access should not be inferred from the general table. The page says displaying or redistributing FMP data needs a separate agreement. A sourced, dated manual snapshot can support a private prototype if the endpoint is unavailable; it is not a live index feed.
+
+## Other free-plan screening
+
+The earlier 2026-10-06 comparison was a published-plan screen, not an authenticated benchmark: [Twelve Data Basic](https://twelvedata.com/pricing) has tight per-minute/daily credits for repeated 500-symbol refreshes; [Massive Stocks Basic](https://massive.com/pricing) advertises two historical years and end-of-day access; [Alpha Vantage free](https://www.alphavantage.co/support/) has 25 requests/day and premium US delayed/real-time data. None currently provides a documented replacement for the full first-release workload. Recheck entitlements before switching candidates.
+
+## Authenticated implementation probe and provider-selection gate
+
+1. With a Basic key, request five years of `1Day` `feed=sip` bars for five symbols with `limit=10000`. Follow all page tokens; record counts, bytes, latency, 429/rate headers, and invalid-symbol behavior. Include a preceding close, split, rename, and narrow stock/date repair. No key is stored in this repository.
+2. During and after a regular session, compare historical `1Day` ending at least 15 minutes ago with multi-symbol snapshots using `feed=delayed_sip`. Record Basic entitlement, cumulative-bar behavior, after-hours volume revisions to the same dated bar, timestamps/as-of semantics, and coverage at refresh ticks. Determine a feasible after-hours stop/finality rule. If neither endpoint works, probe time-filtered minute-bar aggregation and its API cost before selecting it.
+3. Compare daily `v`/`vw` for liquid and thin stocks, including pre/post-market activity. Verify that the chosen dollar-volume estimate and displayed source/as-of details match the provider's bar convention; do not label native daily volume regular-session-only.
+4. Probe FMP's constituent endpoint on a free key: membership, share classes, sector taxonomy, update time, request limits, and account terms.
+5. Review applicable agreements and obtain the needed rights before trader-facing or other multi-user deployment. An API success or paid individual subscription alone does not establish redistribution rights.
+
+**Decision state:** Alpaca Basic remains the leading documented private-development price candidate. Current-day and after-hours bar availability/finality, FMP catalog access, and future usage rights remain gates. The provider's daily-volume convention is accepted for the first definition.

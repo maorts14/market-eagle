@@ -1,5 +1,7 @@
 # Market Eagle
 
+> This repository's current application is a reference prototype. The agreed rebuild definition and implementation handoff are in the [knowledge base](knowledge-base/README.md) on the `definition` branch. The architecture and run instructions below describe the prototype.
+
 Market Eagle is an evidence-first market intelligence workspace. It retains daily price history, measures sector rotation and lead/lag relationships, produces a daily brief, and lets a research agent answer questions using the stored data.
 
 It is a research tool, not investment advice. Every relationship is labeled with the time window and statistic used; correlation is never presented as causation or a forecast.

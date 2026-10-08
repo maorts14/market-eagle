@@ -1,0 +1,51 @@
+# Agent design
+
+The implementation-facing turn, tool, evidence, and release boundaries are drafted in [agent-harness-contract.md](agent-harness-contract.md).
+
+## Agreed direction
+
+- The first analytical slice covers sector leadership and leading stocks within sectors.
+- Time-window aggregation is a reusable layer, not a fixed list of hardcoded periods.
+- The agent should be able to construct an analytical request from the user's intent. Predefined query options may help users, but the agent must support the accepted compositional test case below.
+- The long-term goal is to gain analytical power without encoding every specific question as a separate fixed tool.
+- The agent's questions should lead to calculations over retained observations, not a precomputed table for every possible result. The boundary is described in [data-and-query-boundary.md](data-and-query-boundary.md).
+- The agent should translate intent into a typed, validated analytical plan and call the same read-only calculation service as the explorer. PostgreSQL is the first selected query engine; a later engine can sit behind that service.
+
+## Decisions from the agent interview
+
+- **Question scope:** the agent should handle flexible questions and calculations over data the product stores, rather than just restating the explorer's fixed rankings. A question such as “Which stock gained most while daily dollar trading volume exceeded $100,000 on at least 80% of days last month?” is a required first-agent test case. Unsupported data or undefined calculations must be identified, not invented.
+- **Investigation:** the agent may run more than one read-only analytical step when the results call for it. If a question can be answered correctly with one query, it should aim for one query. It may use follow-up queries to check coverage or inspect a result when needed.
+- **Execution boundary:** model text is untrusted, including user messages and tool results. The agent cannot execute model-generated SQL directly, write market data, or invoke unapproved actions. It proposes an analytical request; application code validates allowed concepts and compiles/executes the data query through the read-only analytical service. Tool permissions, not prompt wording alone, enforce this boundary. How expressive that request language must be is the next design question.
+- **Interpretation:** if the question has a reasonable interpretation, calculate under that interpretation and state the assumptions that affected the result. Ask for clarification when there is no defensible interpretation.
+- **Sources and causal claims:** the first agent uses only data retained by the product. News integration is later. Questions such as “Why did this stock rise?” are out of scope: the agent may describe trends and patterns visible in the data but must not claim to know the cause.
+- **Conversation:** the agent carries context across turns in one conversation. A new conversation starts fresh and does not draw on other conversations. The product supports multiple conversations. Before authentication exists, everyone who can enter the app can view and explicitly delete all conversations; the deletion UI must warn that the first deployment has no backup. After authentication is added, conversations become per-user.
+- **Answer evidence:** show calculation details and underlying rows when they help the user understand or check the answer. An aggregate over hundreds of rows does not require showing an arbitrary handful of rows. The exact presentation rule remains to be designed.
+- **Composable requests:** the model may combine approved data fields, measures, time windows, filters, aggregation, and ranking in a typed analytical request. Trusted application code validates and compiles it, potentially into one query. The system defines reusable meanings and operators, not a separate rule or tool for each example question.
+- **First vocabulary:** daily OHLCV fields, period returns, comparisons, counts, percentages, averages, sector grouping, and rankings are in the first composable language. Trader-vocabulary research supplied the accepted v1 capability set in [agent-harness-contract.md](agent-harness-contract.md); precise metric policies still need provider verification.
+- **General interpretation policy:** interpret free text using the conversation context and a shared vocabulary of metrics, units, and date conventions. Use a defensible interpretation and disclose assumptions; ask only when no defensible interpretation is available. “Last month” as the previous completed calendar month and “highest gains” as stock percentage return are examples of reusable conventions, not prompt-specific code paths. Test diverse phrasings and unrelated questions to discover gaps.
+- **Coverage and incomplete data:** the agent may answer from the stocks it could evaluate when some requested observations are missing. State the eligible count and share of the requested universe, for example “across X% of stocks scanned,” and disclose material exclusions. Scope the claim to that evaluated set; do not call it the winner across all requested stocks when missing stocks could change the result. Whether a particular calculation remains meaningful depends on the question and which data are missing. No universal eligible-stock percentage floor is required initially.
+- **Daily-frequency rules:** an absolute count requires that many observed, calculable qualifying days; a stock with fewer observed days cannot pass. A relative percentage uses qualifying days divided by that stock's observed, usable days in the requested range, even if it was listed recently or the provider supplied fewer bars. Missing days are outside that denominator, not failed days. Report qualifying/observed counts and the observed coverage of the requested range. No fixed minimum sample applies initially, even for 1/1; reconsider only when real usage shows a need.
+- **Linear conversation:** allow only one active turn per conversation; a new message is accepted after it finishes. Separate conversations may run simultaneously and have isolated context. The user can cancel an active turn; the input reopens when cancellation completes.
+- **Evidence presentation:** keep supporting details in a collapsed section that the user can unfold. Include relevant calculation inputs and exclusions; avoid an arbitrary sample of rows for a large aggregate.
+- **Deletion:** an explicit delete action permanently removes a conversation, its turns, and conversation-specific saved answers/evidence records. Shared market observations remain. Before authentication, any app visitor can use it for any conversation. The UI must state that the initial deployment has no backup.
+
+## Evaluation requirements
+
+Build tests at three levels: (1) decision cases for intent interpretation, assumption disclosure, clarification, tool choice, and refusal of unsupported or disallowed requests; (2) tool and query-boundary tests for schema validation, permissions, query limits, injection attempts, and numerical correctness; and (3) end-to-end question sets with expected plans, calculations, evidence, and final answers. Include ordinary, ambiguous, incomplete-data, adversarial, and structurally different questions so the suite does not merely reward hardcoded handling of examples. The volume-and-gain question above is a required end-to-end case. Define expected outputs before judging the agent's prose, so fluent but wrong answers fail.
+
+Passing the release test suite is a release gate. The operator must have a manual option to release despite a failed or incomplete test gate. This bypass applies to the release gate only; runtime read-only permissions, allowed actions, and query validation remain enforced. The exact override interface and audit record remain to be designed.
+
+Wrong calculation results and broken runtime safety boundaries are critical gate failures. Measure answer quality with a rubric for factual grounding, completeness, clarity, and correct conversation use, rather than an exact prose match. Programmatic checks cover numbers and required evidence; human-labeled examples calibrate any automated response grader. The manual override record includes operator, reason, test run/version, and failed checks. See [agent-harness-contract.md](agent-harness-contract.md).
+
+For free text, use code for structured facts and tool traces, a separate rubric-driven evaluator model for semantic claims and clarity, and a smaller human-labeled set to verify that evaluator. The evaluator must give per-criterion reasons and be challenged with both valid alternative phrasings and plausible wrong answers. Core factual grounding and required coverage disclosures gate release; a quality score is not a substitute for those checks.
+
+The first evaluation dataset is built before release from synthetic fixtures and representative questions. After launch, review real questions, traces, feedback, and failures to expand the test set. A case becomes a release gate only after its expected behavior is labeled and reviewed. The three-layer testing method is accepted for the first version; its measured reliability and thresholds must be established on real sample outputs.
+
+## Open meaning and design decisions
+
+- Provider verification and shared data-policy decisions must fix price basis, bar status, feed, and precise metric versions before production calculations.
+- Homelab measurements must set configurable model/tool/query/time/result/context limits; the harness enforces them from its first implementation.
+- Human-labeled evaluation outputs must establish the broader answer-quality threshold before release. The core factual, coverage, context-isolation, and runtime-boundary cases already require full passage unless the operator uses the recorded release override.
+- A minimum observed-day sample for relative frequency is intentionally deferred until actual use shows a need; the first version shows the numerator, denominator, and range coverage.
+
+The dedicated discussion is [Agent behavior for stock analysis](codex://threads/01a10e7f-bce5-72a1-b146-f2380f797f72). Its decisions should be copied into this knowledge base as they are accepted.
