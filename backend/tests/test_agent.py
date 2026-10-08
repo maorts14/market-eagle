@@ -14,6 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from market_eagle.agent.activities import AgentActivities
+from market_eagle.agent.api import public_turn, reconcile_turn
 from market_eagle.agent.models import Decision, Limits, previous_completed_month
 from market_eagle.agent.store import AgentStore, BusyConversation
 from market_eagle.agent.workflow import AgentTurnWorkflow
@@ -85,7 +86,9 @@ class FakeModel:
         )
 
     def summarize(self, turns):
-        return "Earlier research about " + turns[0]["question"]
+        return " | ".join(
+            item.get("prior_summary") or item["question"] for item in turns
+        )[-4000:]
 
 
 @pytest.fixture
@@ -126,6 +129,16 @@ def test_gain_and_dollar_volume_previous_calendar_month_end_to_end(setup):
         turn["id"], "completed", decision, outcome["evidence_id"], explanation, None
     )
     assert store.turn(turn["id"])["status"] == "completed"
+    rendered = public_turn(store, store.turn(turn["id"]))
+    assert rendered["trusted_result"]["ranking_scope"] == "eligible_stocks_only"
+    assert (
+        rendered["trusted_result"]["coverage_label"]
+        == "Evaluated 4 of 5 tracked stocks"
+    )
+    assert rendered["trusted_result"]["eligible_count"] == 4
+    assert rendered["trusted_result"]["catalog"]["tracked_count"] == 5
+    assert rendered["trusted_result"]["data"]["return_rankings_trusted"] is False
+    assert "all five" not in rendered["agent_explanation"].lower()
     assert store.conversation(conversation)["active_turn_id"] is None
     assert model.seen_contexts[0]["recent_turns"] == []
     assert [entry["stage"] for entry in store.trace_for_turn(turn["id"])] == [
@@ -313,15 +326,150 @@ def test_temporal_turn_survives_client_detachment(setup):
                     ],
                     activity_executor=executor,
                 ):
-                    handle = await environment.client.start_workflow(
-                        AgentTurnWorkflow.run,
-                        turn["id"],
-                        id=f"agent-turn-{turn['id']}",
-                        task_queue="agent-test",
+                    # The store commit happened above. Simulate the API dying before start.
+                    await reconcile_turn(
+                        store, environment.client, turn["id"], Limits(), "agent-test"
                     )
-                    # Reacquire by deterministic ID, as a reconnecting API process would.
-                    reconnected = environment.client.get_workflow_handle(handle.id)
+                    await reconcile_turn(
+                        store, environment.client, turn["id"], Limits(), "agent-test"
+                    )
+                    reconnected = environment.client.get_workflow_handle(
+                        f"agent-turn-{turn['id']}"
+                    )
                     await reconnected.result()
 
     asyncio.run(run())
     assert store.turn(turn["id"])["status"] == "completed"
+
+
+def test_cancel_requested_reconciles_after_crash(setup):
+    from temporalio.testing import WorkflowEnvironment
+    from temporalio.worker import Worker
+
+    store, _, activities = setup
+    conversation = store.create_conversation()
+    turn = store.submit(conversation, "cancel-crash", "Research this", "2026-01-08")
+    store.request_cancel(turn["id"])
+
+    async def run():
+        async with await WorkflowEnvironment.start_time_skipping() as environment:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                async with Worker(
+                    environment.client,
+                    task_queue="agent-cancel-test",
+                    workflows=[AgentTurnWorkflow],
+                    activities=[
+                        activities.load_context,
+                        activities.interpret,
+                        activities.execute,
+                        activities.explain,
+                        activities.finish,
+                        activities.refresh_summary,
+                    ],
+                    activity_executor=executor,
+                ):
+                    await reconcile_turn(
+                        store,
+                        environment.client,
+                        turn["id"],
+                        Limits(),
+                        "agent-cancel-test",
+                    )
+
+    asyncio.run(run())
+    assert store.turn(turn["id"])["status"] == "cancelled"
+    assert store.conversation(conversation)["active_turn_id"] is None
+
+
+def test_transient_start_failure_keeps_turn_recoverable(setup):
+    store, _, _ = setup
+    conversation = store.create_conversation()
+    turn = store.submit(conversation, "offline", "Research this", "2026-01-08")
+
+    class OfflineTemporal:
+        async def start_workflow(self, *args, **kwargs):
+            raise OSError("Temporal connection unavailable")
+
+    with pytest.raises(OSError):
+        asyncio.run(
+            reconcile_turn(store, OfflineTemporal(), turn["id"], Limits(), "agent-test")
+        )
+    assert store.turn(turn["id"])["status"] == "running"
+    assert store.conversation(conversation)["active_turn_id"] == turn["id"]
+
+
+def test_grounded_follow_up_uses_prior_trusted_result(setup):
+    store, _, activities = setup
+    conversation = store.create_conversation()
+    first = store.submit(
+        conversation, "first", "Find the leader last month", "2026-01-08"
+    )
+    decision = gain_volume_decision(date(2026, 1, 8)).model_dump(mode="json")
+    evidence_id = activities.execute(first["id"], decision)["evidence_id"]
+    activities.finish(
+        first["id"],
+        "completed",
+        decision,
+        evidence_id,
+        "EPSI led among eligible stocks",
+        None,
+    )
+    follow = store.submit(
+        conversation, "follow", "How did that stock perform?", "2026-01-08"
+    )
+    context = activities.load_context(follow["id"])
+    prior = context["recent_turns"][-1]
+    assert prior["trusted_result"]["rows"][0]["ticker"] == "EPSI"
+    assert prior["trusted_result"]["eligible_count"] == 4
+
+    class FollowingModel(FakeModel):
+        def interpret(self, context, *, feedback=None):
+            trusted = context["recent_turns"][-1]["trusted_result"]
+            return Decision.model_validate(
+                {
+                    "kind": "query",
+                    "request": {
+                        "request_version": 1,
+                        "universe": "latest_published_catalog",
+                        "window": {"start": "2025-12-01", "end": "2025-12-31"},
+                        "grain": "stock",
+                        "measures": ["period_return"],
+                        "predicates": [
+                            {
+                                "field": "ticker",
+                                "operator": "=",
+                                "value": trusted["rows"][0]["ticker"],
+                            }
+                        ],
+                        "sort": {"measure": "period_return", "direction": "desc"},
+                        "limit": 1,
+                    },
+                }
+            )
+
+    activities.model = FollowingModel(gain_volume_decision(date(2026, 1, 8)))
+    follow_decision = activities.interpret(follow["id"], context, None)
+    assert follow_decision["request"]["predicates"][0]["value"] == "EPSI"
+    result = store.evidence(
+        activities.execute(follow["id"], follow_decision)["evidence_id"]
+    )
+    assert result["rows"][0]["ticker"] == "EPSI"
+    assert (
+        result["rows"][0]["period_return"]
+        == prior["trusted_result"]["rows"][0]["period_return"]
+    )
+
+
+def test_summary_carries_context_beyond_thirty_turns(setup):
+    store, _, activities = setup
+    conversation = store.create_conversation()
+    for index in range(40):
+        turn = store.submit(
+            conversation, f"request-{index}", f"question-{index}", "2026-01-08"
+        )
+        store.finish(turn["id"], "unsupported", explanation="No calculation")
+        activities.refresh_summary(turn["id"])
+    summary = store.conversation(conversation)["summary"]
+    assert "question-0" in summary
+    assert "question-31" in summary
+    assert len(store.original_turns(conversation, limit=None)) == 40

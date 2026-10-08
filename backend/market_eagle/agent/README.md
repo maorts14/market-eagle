@@ -24,6 +24,10 @@ this agent-owned store with a transactional shared store.
 `GET /api/v1/agent/turns/{id}` after reconnect. `trusted_result` is copied from
 the analytical service; `agent_explanation` is model prose. The evidence and
 trace routes expose the underlying calculation and operational decisions.
+Reconnect reads idempotently start an active turn by its deterministic Temporal
+ID, repairing a crash between the store commit and workflow start. The same
+path resumes a pending cancellation. A transient Temporal start error leaves
+the durable turn active so a later reconnect can retry it.
 Cancellation marks `cancel_requested`, asks Temporal to cancel, then persists
 `cancelled` before accepting a new turn in that conversation. Deletion first
 cancels any active turn, then permanently removes its local records.
@@ -37,3 +41,6 @@ needs human-labeled baseline cases before a broader release threshold can be
 set.
 `evaluation-v1.json` records the initial programmatic scenarios and rubric;
 its prose cases are not human labels or a calibrated semantic release gate.
+Recent model context includes trusted prior result fields. Older context is
+summarized incrementally from original turns, with the summary's source span
+recorded; full original turns and evidence remain retrievable until deletion.

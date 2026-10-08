@@ -8,8 +8,9 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from temporalio.client import Client, WorkflowAlreadyStartedError, WorkflowFailureError
-from temporalio.service import RPCError
+from temporalio.client import Client, WorkflowExecutionStatus, WorkflowFailureError
+from temporalio.exceptions import WorkflowAlreadyStartedError
+from temporalio.service import RPCError, RPCStatusCode
 
 from .models import Limits
 from .store import AgentStore, BusyConversation
@@ -23,6 +24,51 @@ class SubmitBody(BaseModel):
 
 def workflow_id(turn_id: str) -> str:
     return f"agent-turn-{turn_id}"
+
+
+async def reconcile_turn(
+    store: AgentStore,
+    temporal: Client,
+    turn_id: str,
+    limits: Limits,
+    task_queue: str,
+) -> dict:
+    """Repair a committed active turn after an API crash before workflow start."""
+    turn = store.turn(turn_id)
+    if turn["status"] not in {"running", "cancel_requested"}:
+        return turn
+    try:
+        await temporal.start_workflow(
+            AgentTurnWorkflow.run,
+            args=[turn_id, limits.max_repair_attempts, limits.max_tool_calls],
+            id=workflow_id(turn_id),
+            task_queue=task_queue,
+        )
+    except WorkflowAlreadyStartedError:
+        pass
+    handle = temporal.get_workflow_handle(workflow_id(turn_id))
+    if turn["status"] == "cancel_requested":
+        try:
+            await handle.cancel()
+        except RPCError as error:
+            if error.status not in {
+                RPCStatusCode.NOT_FOUND,
+                RPCStatusCode.FAILED_PRECONDITION,
+            }:
+                raise
+        try:
+            await handle.result()
+        except WorkflowFailureError:
+            pass
+        store.finish(turn_id, "cancelled")
+    elif (await handle.describe()).status not in {
+        WorkflowExecutionStatus.RUNNING,
+        WorkflowExecutionStatus.CONTINUED_AS_NEW,
+    }:
+        store.finish(
+            turn_id, "failed", error="Workflow ended without persisting a turn result"
+        )
+    return store.turn(turn_id)
 
 
 def create_agent_router(
@@ -39,11 +85,19 @@ def create_agent_router(
         return {"conversation_id": store.create_conversation()}
 
     @router.get("/conversations/{conversation_id}")
-    def conversation(conversation_id: str):
+    async def conversation(conversation_id: str):
         try:
             current = store.conversation(conversation_id)
         except KeyError:
             raise HTTPException(404, "Conversation not found") from None
+        if current["active_turn_id"]:
+            try:
+                await reconcile_turn(
+                    store, temporal, current["active_turn_id"], limits, task_queue
+                )
+            except (RPCError, OSError) as error:
+                raise HTTPException(503, "Could not reconnect agent turn") from error
+            current = store.conversation(conversation_id)
         return {
             "conversation_id": conversation_id,
             "active_turn_id": current["active_turn_id"],
@@ -68,33 +122,22 @@ def create_agent_router(
             raise HTTPException(409, "Conversation has an active turn") from None
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
-        if turn["status"] == "running":
+        if turn["status"] in {"running", "cancel_requested"}:
             try:
-                await temporal.start_workflow(
-                    AgentTurnWorkflow.run,
-                    turn["id"],
-                    limits.max_repair_attempts,
-                    limits.max_tool_calls,
-                    id=workflow_id(turn["id"]),
-                    task_queue=task_queue,
-                )
-            except WorkflowAlreadyStartedError:
-                pass
-            except Exception as error:
-                store.finish(
-                    turn["id"],
-                    "failed",
-                    error=f"Workflow start failed: {type(error).__name__}",
-                )
+                await reconcile_turn(store, temporal, turn["id"], limits, task_queue)
+            except (RPCError, OSError) as error:
                 raise HTTPException(503, "Could not start agent turn") from error
         return public_turn(store, store.turn(turn["id"]))
 
     @router.get("/turns/{turn_id}")
-    def get_turn(turn_id: str):
+    async def get_turn(turn_id: str):
         try:
+            await reconcile_turn(store, temporal, turn_id, limits, task_queue)
             return public_turn(store, store.turn(turn_id))
         except KeyError:
             raise HTTPException(404, "Turn not found") from None
+        except (RPCError, OSError) as error:
+            raise HTTPException(503, "Could not reconnect agent turn") from error
 
     @router.get("/turns/{turn_id}/trace")
     def get_trace(turn_id: str):
@@ -115,22 +158,7 @@ def create_agent_router(
         turn = store.turn(turn_id)
         if turn["status"] in {"running", "cancel_requested"}:
             store.request_cancel(turn_id)
-            handle = temporal.get_workflow_handle(workflow_id(turn_id))
-            try:
-                await handle.cancel()
-            except RPCError:
-                if store.turn(turn_id)["status"] not in {
-                    "completed",
-                    "needs_clarification",
-                    "unsupported",
-                    "failed",
-                }:
-                    raise
-            try:
-                await handle.result()
-            except WorkflowFailureError:
-                pass
-            store.finish(turn_id, "cancelled")
+            await reconcile_turn(store, temporal, turn_id, limits, task_queue)
 
     @router.post("/turns/{turn_id}/cancel")
     async def cancel(turn_id: str):
@@ -175,6 +203,15 @@ def public_turn(store: AgentStore, turn: dict) -> dict:
                 "calculated_at",
             )
         }
+        requested_count = trusted["catalog"]["tracked_count"]
+        trusted["ranking_scope"] = (
+            "eligible_stocks_only"
+            if trusted["eligible_count"] < requested_count
+            else "requested_universe"
+        )
+        trusted["coverage_label"] = (
+            f"Evaluated {trusted['eligible_count']} of {requested_count} tracked stocks"
+        )
     return {
         "turn_id": turn["id"],
         "conversation_id": turn["conversation_id"],

@@ -129,12 +129,35 @@ class AgentStore:
                                  ORDER BY created_at DESC LIMIT ?""",
                 (turn["conversation_id"], turn["created_at"], recent_count),
             ).fetchall()
+            recent = []
+            for row in reversed(rows):
+                item = dict(row)
+                if item["evidence_id"]:
+                    evidence = db.execute(
+                        "SELECT result_json FROM evidence WHERE id=?",
+                        (item["evidence_id"],),
+                    ).fetchone()
+                    result = json.loads(evidence["result_json"])
+                    item["trusted_result"] = {
+                        key: result[key]
+                        for key in (
+                            "resolved_window",
+                            "catalog",
+                            "data",
+                            "market",
+                            "eligible_count",
+                            "matched_count",
+                            "rows",
+                            "exclusions",
+                        )
+                    }
+                recent.append(item)
         return {
             "question": turn["question"],
             "reference_date": turn["reference_date"],
             "summary": conversation["summary"],
             "summary_through_turn_id": conversation["summary_through_turn_id"],
-            "recent_turns": [dict(row) for row in reversed(rows)],
+            "recent_turns": recent,
         }
 
     def original_turns(
