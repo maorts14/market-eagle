@@ -22,7 +22,7 @@ _Avoid_: Daily performance, when referring to the underlying observation rather 
 A trading date in the requested range for which the selected source, feed, and price basis provide an accepted Daily Bar with the values needed for the requested daily condition. Relative day-frequency calculations use the number of these days as their denominator. A missing day is not counted as either satisfying or failing the condition; the result also shows how much of the requested range was observed.
 
 **Provisional Daily Bar**:
-The current trading date's Daily Bar while the provider still updates it, including possible after-hours volume changes. Its values can change at each refresh until the provider's finality policy is satisfied.
+The current trading date's Daily Bar, including possible after-hours volume changes. Its values can change on later fetches. The product labels a bar for today provisional; an older bar is the latest accepted observation, not a claim that the provider can never revise it.
 _Avoid_: Hourly Bar, because the initial product refreshes one whole-day candle rather than storing separate one-hour candles.
 
 **Daily Dollar Trading Volume**:

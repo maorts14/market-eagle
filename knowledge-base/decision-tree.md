@@ -9,7 +9,7 @@ This records accepted choices, explicitly deferred questions, and checks to perf
 - Universe semantics for the first release: current members only; historical membership is deferred to [collect more stocks](https://github.com/maorts14/market-eagle/issues/1).
 - Base observation: daily OHLCV for each stock, with sector association.
 - Initial backfill: five years.
-- Intraday refresh goal: about hourly during the US trading session, then continue checking the same day's bar while the provider still updates it after close. The actual after-hours availability, cadence, and finality signal require a provider probe.
+- Intraday refresh goal: about hourly during the US trading session, then continue checking the same day's bar after close. Label today's bar provisional and retain source/as-of time. Refetch prior sessions to catch late updates; do not require proof of an exact provider-final time.
 - Intraday representation: update one provisional whole-day OHLCV candle; no separate hourly candles in the first slice.
 - If a requested range includes today, include an available current-day provisional bar in calculations and rankings; show its provisional status and provider as-of time. A range for "last month" means the previous completed calendar month, so it does not include today.
 - Daily-bar convention: use the provider's same-day candle as it updates. Its volume may include extended-hours trades after the regular close; do not describe that volume as regular-session-only. Keep one candle for the date and show its source/as-of time.
@@ -58,7 +58,7 @@ This records accepted choices, explicitly deferred questions, and checks to perf
 ## Current frontier
 
 1. **Market-data verification during implementation**: authenticate Alpaca and test five-year multi-symbol backfill, current-day and after-close updates to the same bar, delayed SIP availability, and rate behavior. Check FMP constituent/sector endpoint access. Published documentation is sufficient for this definition; the probe gates final provider selection and live integration.
-2. **Unresolved calculation inputs**: decide price basis, provisional-day storage/selection mechanics, provider finality, and coverage thresholds before finalizing bar selection and explorer behavior. Inclusion of an available provisional bar for a range containing today is settled. The proposed paths and ownership are documented in [system-architecture.md](system-architecture.md), [data-model.md](data-model.md), and [workflows.md](workflows.md).
+2. **Unresolved calculation inputs**: decide price basis, provisional-day storage/selection mechanics, and coverage thresholds before finalizing bar selection and explorer behavior. Inclusion of an available provisional bar for a range containing today is settled. The system uses latest accepted revisions and later rechecks instead of waiting for proof of provider finality. The proposed paths and ownership are documented in [system-architecture.md](system-architecture.md), [data-model.md](data-model.md), and [workflows.md](workflows.md).
 3. **Deployment sizing**: [homelab-inventory.sh](homelab-inventory.sh) ran on 2026-10-06. The host has 6 cores/12 threads, 15 GiB RAM, NVMe root, and a separate mounted 3.6 TB HDD; Docker/Kubernetes are absent. Use deployed baseline metrics to set PostgreSQL, Temporal, and worker limits.
 4. **Batch execution probe during implementation**: [workflows.md](workflows.md) records the accepted five-stock/five-year activity and narrower repair path. Verify the requested 10,000-bar page size, pagination, ticker mapping, concurrency, and retry behavior with the authenticated provider before setting operating limits.
 5. **Agent implementation dependencies**: [agent-harness-contract.md](agent-harness-contract.md) is confirmed. Precise metric versions depend on provider and shared data-policy verification; numeric limits depend on homelab measurements; the broader response-quality threshold depends on human-labeled baseline cases. These do not reopen the settled agent/harness behavior.
@@ -79,6 +79,6 @@ This records accepted choices, explicitly deferred questions, and checks to perf
 ## Downstream, waiting on the frontier
 
 - Retrieval corpus, agent/tool boundaries, evidence citations, and evaluation cases depend on the question contract.
-- Provider adapters, exact bar constraints, refresh/finalization timing, and fallback behavior depend on source feasibility. The service boundaries and first PostgreSQL engine are already proposed/selected as recorded above.
+- Provider adapters, exact bar constraints, refresh/recheck cadence, and fallback behavior depend on source feasibility. The service boundaries and first PostgreSQL engine are already proposed/selected as recorded above.
 - Raw Docker versus local Kubernetes depends on homelab operational needs and available resources.
 - User accounts, access control, operational targets, and commercial distribution depend on the design-partner rollout plan.

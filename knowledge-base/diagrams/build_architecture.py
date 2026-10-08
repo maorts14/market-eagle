@@ -281,7 +281,7 @@ p = Page("collection", "03 · Collection", "Collection and ingestion",
          "Each provider response passes through validation before publication; Temporal controls runs from above.")
 p.group("collection_control", 55, 190, 1490, 120, "CONTROL · schedule, retry, progress", fill="gray")
 p.group("catalog_flow", 55, 325, 1490, 195, "CATALOG FLOW · current members and sectors", fill="gray")
-p.group("price_flow", 55, 540, 1490, 260, "PRICE FLOW · five-year backfill, session refresh, finalization", fill="gray")
+p.group("price_flow", 55, 540, 1490, 260, "PRICE FLOW · five-year backfill, session refresh, reconciliation", fill="gray")
 p.card("collection_temporal", 605, 215, 390, 75, "Temporal collection controller",
        "Starts runs · retries activities · tracks progress", "purple", "purple_edge", icon="clock")
 p.card("catalog_provider", 80, 380, 200, 100, "1 · Catalog source",
@@ -304,7 +304,7 @@ p.card("write_bars", 945, 595, 230, 100, "4 · Save prices",
        "Save prices + later corrections", icon="server")
 p.card("bar_tables", 1240, 595, 270, 100, "5 · Daily price database",
        "Prices + where they came from", "teal", "teal_edge", icon="database")
-p.card("coverage_check", 945, 705, 565, 80, "6 · After backfill / final fetch",
+p.card("coverage_check", 945, 705, 565, 80, "6 · After backfill / recheck",
        "Worker queries PostgreSQL for missing requested prices; Temporal retries", icon="server")
 p.edge("d_control_catalog", "collection_temporal", "catalog_flow", "start / retry",
        color="purple_edge", exit_x=.3, exit_y=1, entry_x=.3, entry_y=0)
@@ -489,14 +489,14 @@ p.card("refresh_control", 380, 545, 315, 70, "Refresh workflow",
 p.card("refresh_activity", 760, 545, 355, 70, "Fetch cumulative day bar",
        "Report freshness + count")
 p.card("refresh_result", 1180, 545, 315, 70, "Provisional status",
-       "Policy still open", "teal", "teal_edge")
-p.card("final_trigger", 80, 635, 245, 70, "After provider finality",
-       "Provider delay to verify", "amber", "amber_edge")
-p.card("final_control", 380, 635, 315, 70, "Finalize workflow",
+       "Source as-of shown", "teal", "teal_edge")
+p.card("final_trigger", 80, 635, 245, 70, "Next-day recheck",
+       "No final-time assumption", "amber", "amber_edge")
+p.card("final_control", 380, 635, 315, 70, "Reconcile workflow",
        "One run per session", "purple", "purple_edge")
 p.card("final_activity", 760, 635, 355, 70, "Refetch + completeness",
        "Reuse backfill activities")
-p.card("final_result", 1180, 635, 315, 70, "Final price status",
+p.card("final_result", 1180, 635, 315, 70, "Latest accepted price",
        "Complete or incomplete", "teal", "teal_edge")
 p.card("catalog_trigger", 80, 725, 245, 70, "Manual catalog run",
        "Later schedule open", "amber", "amber_edge")

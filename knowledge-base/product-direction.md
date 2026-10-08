@@ -11,7 +11,7 @@
 - Collect daily stock open, high, low, close, and volume observations. Associate each stock with its sector.
 - The first collection tracks current S&P 500 members. Historical membership and expansion to more stocks are deferred in [collect more stocks](https://github.com/maorts14/market-eagle/issues/1).
 - Backfill five years of daily data for the initial tracked stocks.
-- During regular US trading hours, refresh the **current day's single OHLCV candle** about hourly and continue checking it after close while the provider still updates that same bar, including its volume. It remains provisional until the provider's finality condition is met; do not store a separate hourly candle in the initial slice.
+- During regular US trading hours, refresh the **current day's single OHLCV candle** about hourly and continue checking it after close for updates to that same bar, including its volume. Mark today's value provisional and show its as-of time. Refetch the previous session later to capture late updates; do not assume a knowable provider-final time or store a separate hourly candle in the initial slice.
 - Use a sourced sector classification with effective dates; prefer official GICS if its usage terms fit.
 - Group historical price windows by each tracked stock's current sector from the latest published catalog snapshot at query time. Show the sector snapshot/as-of date; historical sector grouping is deferred.
 - The development data budget is $0 per month. Revisit the budget when the first trader design partners arrive.

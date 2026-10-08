@@ -390,7 +390,7 @@
         <mxCell id="price_flow" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#F3F6F9;strokeColor=#9DAFBE;strokeWidth=1.5;fontFamily=Arial;fontSize=18;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
           <mxGeometry x="55" y="540" width="1490" height="260" as="geometry" />
         </mxCell>
-        <mxCell id="price_flow_title" value="PRICE FLOW · five-year backfill, session refresh, finalization" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=15;fontColor=#61758A;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+        <mxCell id="price_flow_title" value="PRICE FLOW · five-year backfill, session refresh, reconciliation" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=15;fontColor=#61758A;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="75" y="548" width="1450" height="30" as="geometry" />
         </mxCell>
         <mxCell id="collection_temporal" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#F1EEFB;strokeColor=#7863B0;strokeWidth=1.5;fontFamily=Arial;fontSize=18;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
@@ -609,7 +609,7 @@
         <mxCell id="coverage_check_icon_light_2" value="" style="shape=ellipse;rounded=0;html=1;fillColor=#3E78C7;strokeColor=#3E78C7;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="963" y="755" width="3" height="3" as="geometry" />
         </mxCell>
-        <mxCell id="coverage_check_text" value="&lt;b&gt;6 · After backfill / final fetch&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Worker queries PostgreSQL for missing requested prices; Temporal retries&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=16;fontColor=#15263B;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
+        <mxCell id="coverage_check_text" value="&lt;b&gt;6 · After backfill / recheck&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Worker queries PostgreSQL for missing requested prices; Temporal retries&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=16;fontColor=#15263B;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
           <mxGeometry x="1001" y="711" width="501" height="68" as="geometry" />
         </mxCell>
         <mxCell id="d_control_catalog" value="start / retry" style="edgeStyle=orthogonalEdgeStyle;orthogonalLoop=1;jettySize=auto;rounded=1;html=1;strokeColor=#7863B0;strokeWidth=2;endArrow=block;endFill=1;fontFamily=Arial;fontSize=12;fontColor=#61758A;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=1;entryX=0.3;entryY=0;" edge="1" parent="1" source="collection_temporal" target="catalog_flow">
@@ -1252,19 +1252,19 @@
         <mxCell id="refresh_activity" value="&lt;b&gt;Fetch cumulative day bar&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Report freshness + count&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#EAF2FF;strokeColor=#3E78C7;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
           <mxGeometry x="760" y="545" width="355" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="refresh_result" value="&lt;b&gt;Provisional status&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Policy still open&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#E8F7F3;strokeColor=#2B967F;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
+        <mxCell id="refresh_result" value="&lt;b&gt;Provisional status&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Source as-of shown&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#E8F7F3;strokeColor=#2B967F;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
           <mxGeometry x="1180" y="545" width="315" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="final_trigger" value="&lt;b&gt;After provider finality&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Provider delay to verify&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#FFF5DF;strokeColor=#B77924;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
+        <mxCell id="final_trigger" value="&lt;b&gt;Next-day recheck&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;No final-time assumption&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#FFF5DF;strokeColor=#B77924;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
           <mxGeometry x="80" y="635" width="245" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="final_control" value="&lt;b&gt;Finalize workflow&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;One run per session&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#F1EEFB;strokeColor=#7863B0;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
+        <mxCell id="final_control" value="&lt;b&gt;Reconcile workflow&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;One run per session&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#F1EEFB;strokeColor=#7863B0;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
           <mxGeometry x="380" y="635" width="315" height="70" as="geometry" />
         </mxCell>
         <mxCell id="final_activity" value="&lt;b&gt;Refetch + completeness&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Reuse backfill activities&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#EAF2FF;strokeColor=#3E78C7;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
           <mxGeometry x="760" y="635" width="355" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="final_result" value="&lt;b&gt;Final price status&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Complete or incomplete&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#E8F7F3;strokeColor=#2B967F;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
+        <mxCell id="final_result" value="&lt;b&gt;Latest accepted price&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Complete or incomplete&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#E8F7F3;strokeColor=#2B967F;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
           <mxGeometry x="1180" y="635" width="315" height="70" as="geometry" />
         </mxCell>
         <mxCell id="catalog_trigger" value="&lt;b&gt;Manual catalog run&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Later schedule open&lt;/font&gt;" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#FFF5DF;strokeColor=#B77924;strokeWidth=1.5;fontFamily=Arial;fontSize=17;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">

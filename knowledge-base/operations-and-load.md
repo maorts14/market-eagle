@@ -10,7 +10,7 @@ The read-only script was run over Tailscale on `thelab` as `cook` on 2026-10-06.
 
 ## Workload envelope
 
-- Five years × roughly 252 sessions × about 500 tracked securities yields about **630,000 finalized bars** plus comparison closes and revisions. The accepted backfill topology is one Temporal workflow with roughly 100 default five-stock/five-year activities, plus narrower repair activities when needed. Request `limit=10000`; actual page count, activity concurrency, and rate behavior require a probe.
+- Five years × roughly 252 sessions × about 500 tracked securities yields about **630,000 daily bars** plus comparison closes and revisions. The accepted backfill topology is one Temporal workflow with roughly 100 default five-stock/five-year activities, plus narrower repair activities when needed. Request `limit=10000`; actual page count, activity concurrency, and rate behavior require a probe.
 - One cumulative current-day candle per stock, refreshed roughly hourly through regular trading hours, yields a few thousand upserts per session. Session timing and half days come from an exchange calendar.
 - One initial user, later design partners. No latency or concurrency SLO has been accepted. Measure p50/p95 analytical latency, provider lag, workflow queue delay, DB CPU/IO, and memory before sizing workers.
 
