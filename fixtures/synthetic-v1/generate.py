@@ -32,7 +32,7 @@ def money(value: Decimal) -> str:
 
 def write_csv(name: str, fieldnames: list[str], rows: list[dict[str, str]]) -> None:
     with (HERE / name).open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer = csv.DictWriter(stream, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
