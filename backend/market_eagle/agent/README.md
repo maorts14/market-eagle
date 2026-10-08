@@ -26,7 +26,8 @@ the analytical service; `agent_explanation` is model prose. The evidence and
 trace routes expose the underlying calculation and operational decisions.
 Reconnect reads idempotently start an active turn by its deterministic Temporal
 ID, repairing a crash between the store commit and workflow start. The same
-path resumes a pending cancellation. A transient Temporal start error leaves
+path resolves a pending cancellation. When cancellation was recorded before a
+workflow existed, it closes the turn without starting one. A transient Temporal start error leaves
 the durable turn active so a later reconnect can retry it.
 Cancellation marks `cancel_requested`, asks Temporal to cancel, then persists
 `cancelled` before accepting a new turn in that conversation. Deletion first

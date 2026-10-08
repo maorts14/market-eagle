@@ -37,17 +37,18 @@ async def reconcile_turn(
     turn = store.turn(turn_id)
     if turn["status"] not in {"running", "cancel_requested"}:
         return turn
-    try:
-        await temporal.start_workflow(
-            AgentTurnWorkflow.run,
-            args=[turn_id, limits.max_repair_attempts, limits.max_tool_calls],
-            id=workflow_id(turn_id),
-            task_queue=task_queue,
-        )
-    except WorkflowAlreadyStartedError:
-        pass
-    handle = temporal.get_workflow_handle(workflow_id(turn_id))
     if turn["status"] == "cancel_requested":
+        handle = temporal.get_workflow_handle(workflow_id(turn_id))
+        try:
+            description = await handle.describe()
+        except RPCError as error:
+            if error.status != RPCStatusCode.NOT_FOUND:
+                raise
+            # The API committed the turn but crashed before starting Temporal.
+            # Nothing can still be running, so cancellation is already terminal.
+            return store.finish(turn_id, "cancelled")
+        if description.status != WorkflowExecutionStatus.RUNNING:
+            return store.finish(turn_id, "cancelled")
         try:
             await handle.cancel()
         except RPCError as error:
@@ -60,8 +61,18 @@ async def reconcile_turn(
             await handle.result()
         except WorkflowFailureError:
             pass
-        store.finish(turn_id, "cancelled")
-    elif (await handle.describe()).status not in {
+        return store.finish(turn_id, "cancelled")
+    try:
+        await temporal.start_workflow(
+            AgentTurnWorkflow.run,
+            args=[turn_id, limits.max_repair_attempts, limits.max_tool_calls],
+            id=workflow_id(turn_id),
+            task_queue=task_queue,
+        )
+    except WorkflowAlreadyStartedError:
+        pass
+    handle = temporal.get_workflow_handle(workflow_id(turn_id))
+    if (await handle.describe()).status not in {
         WorkflowExecutionStatus.RUNNING,
         WorkflowExecutionStatus.CONTINUED_AS_NEW,
     }:
