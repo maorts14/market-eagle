@@ -36,7 +36,7 @@ class Bar:
 class AnalyticsDataset:
     snapshot_id: str
     catalog_as_of: date
-    published_at: datetime
+    published_at: datetime | None
     members: tuple[CatalogMember, ...]
     sessions: tuple[date, ...]
     bars: tuple[Bar, ...]
