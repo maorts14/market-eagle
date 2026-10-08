@@ -29,6 +29,7 @@ class Bar:
     vwap: Decimal | None
     traded_notional: Decimal | None
     provider_as_of: datetime
+    as_of_kind: Literal["provider", "fetched"]
     status: str
 
 
@@ -36,7 +37,7 @@ class Bar:
 class AnalyticsDataset:
     snapshot_id: str
     catalog_as_of: date
-    published_at: datetime
+    published_at: datetime | None
     members: tuple[CatalogMember, ...]
     sessions: tuple[date, ...]
     bars: tuple[Bar, ...]
@@ -80,7 +81,9 @@ class DailyCondition(BaseModel):
 
     @model_validator(mode="after")
     def compatible(self) -> DailyCondition:
-        expected = {"daily_dollar_volume": "USD", "close": "price", "volume": "shares"}[self.field]
+        expected = {"daily_dollar_volume": "USD", "close": "price", "volume": "shares"}[
+            self.field
+        ]
         if self.unit != expected:
             raise ValueError(f"{self.field} requires unit {expected}")
         if self.operator == "in":
@@ -102,7 +105,10 @@ class FrequencyReduction(BaseModel):
     def valid_fraction(self) -> FrequencyReduction:
         if self.measure == "qualifying_fraction" and self.value > 1:
             raise ValueError("fraction cannot exceed 1")
-        if self.measure == "qualifying_days" and self.value != self.value.to_integral_value():
+        if (
+            self.measure == "qualifying_days"
+            and self.value != self.value.to_integral_value()
+        ):
             raise ValueError("day count must be an integer")
         return self
 
@@ -127,7 +133,14 @@ class StockPredicate(BaseModel):
 class SortSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    measure: Literal["period_return", "excess_vs_sector", "breadth", "sector_return", "qualifying_fraction", "qualifying_days"]
+    measure: Literal[
+        "period_return",
+        "excess_vs_sector",
+        "breadth",
+        "sector_return",
+        "qualifying_fraction",
+        "qualifying_days",
+    ]
     direction: Literal["asc", "desc"] = "desc"
 
 
@@ -140,11 +153,25 @@ class AnalyticalRequest(BaseModel):
     universe: Literal["latest_published_catalog"]
     window: DateWindow
     grain: Literal["stock", "sector"]
-    measures: list[Literal["period_return", "excess_vs_sector", "breadth", "sector_return", "market_return", "qualifying_days", "qualifying_fraction", "observed_usable_days", "requested_sessions"]] = Field(min_length=1)
+    measures: list[
+        Literal[
+            "period_return",
+            "excess_vs_sector",
+            "breadth",
+            "sector_return",
+            "market_return",
+            "qualifying_days",
+            "qualifying_fraction",
+            "observed_usable_days",
+            "requested_sessions",
+        ]
+    ] = Field(min_length=1)
     daily_conditions: list[DailyCondition] = Field(default_factory=list, max_length=5)
     reduction: FrequencyReduction | None = None
     predicates: list[StockPredicate] = Field(default_factory=list, max_length=5)
-    group_by: list[Literal["stock_id", "sector_code"]] = Field(default_factory=list, max_length=1)
+    group_by: list[Literal["stock_id", "sector_code"]] = Field(
+        default_factory=list, max_length=1
+    )
     sort: SortSpec
     limit: int = Field(ge=1, le=100)
 
@@ -153,7 +180,10 @@ class AnalyticalRequest(BaseModel):
         if self.reduction and not self.daily_conditions:
             raise ValueError("frequency reduction requires daily conditions")
         frequency_measures = {"qualifying_days", "qualifying_fraction"}
-        if not self.daily_conditions and (frequency_measures.intersection(self.measures) or self.sort.measure in frequency_measures):
+        if not self.daily_conditions and (
+            frequency_measures.intersection(self.measures)
+            or self.sort.measure in frequency_measures
+        ):
             raise ValueError("qualifying measures require daily conditions")
         if self.grain == "stock":
             if self.group_by not in ([], ["stock_id"]):
@@ -169,7 +199,16 @@ class AnalyticalRequest(BaseModel):
                 raise ValueError("sort measure is incompatible with sector grain")
         if self.sort.measure not in self.measures:
             raise ValueError("sort measure must be selected")
-        if self.grain == "sector" and any(m in self.measures for m in ("period_return", "excess_vs_sector", "qualifying_days", "qualifying_fraction", "observed_usable_days")):
+        if self.grain == "sector" and any(
+            m in self.measures
+            for m in (
+                "period_return",
+                "excess_vs_sector",
+                "qualifying_days",
+                "qualifying_fraction",
+                "observed_usable_days",
+            )
+        ):
             raise ValueError("stock measures require stock grain")
         if self.grain == "stock" and "breadth" in self.measures:
             raise ValueError("breadth requires sector grain")

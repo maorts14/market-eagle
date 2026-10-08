@@ -29,10 +29,10 @@ The response is an object with:
 | `contract_version`, `metric_version` | `1` and `return-v1`, respectively. |
 | `requested_window`, `resolved_window` | Requested `start`/`end`; resolved `comparison_session`, `first_session`, `last_session`. |
 | `catalog` | `snapshot_id`, `as_of`, `published_at`, `tracked_count`. Sectors are those in this current snapshot even for an old window. |
-| `data` | `source`, `feed`, `price_basis`, `as_of`, `provisional`, `synthetic`. `as_of` is the **oldest provider as-of timestamp among eligible final endpoint bars**, a conservative freshness floor; null if none are eligible. Individual stock timestamps remain available. One query never mixes sources, feeds, or bases. |
+| `data` | `source`, `feed`, `price_basis`, `as_of`, `as_of_kind`, `provisional`, `synthetic`. `as_of` is the **oldest as-of timestamp among eligible final endpoint bars**, a conservative freshness floor; null if none are eligible. `as_of_kind` is `provider`, `fetched`, `mixed`, or null, so a collection time is never presented as a provider publication time. Individual stock timestamps and kinds remain available. One query never mixes sources, feeds, or bases. |
 | `market` | `eligible_count`, `excluded_count`, `return`; null return when none are eligible. |
 | `sectors[]` | `sector_code`, `sector_name`, `tracked_count`, `eligible_count`, `excluded_count`, `up_count`, `breadth`, `return`, `excess_vs_market`, `stocks[]`. Null calculated values when eligible count is zero. |
-| `sectors[].stocks[]` | `stock_id`, `ticker`, `name`, `return`, `excess_vs_sector`, `comparison_close`, `final_close`, `final_observation_status`, `data_as_of`. Only eligible stocks appear; there is no top-level `stocks` array. |
+| `sectors[].stocks[]` | `stock_id`, `ticker`, `name`, `return`, `excess_vs_sector`, `comparison_close`, `final_close`, `final_observation_status`, `data_as_of`, `data_as_of_kind`. Only eligible stocks appear; there is no top-level `stocks` array. |
 
 Sector order: breadth descending, then sector code ascending. Stock order within each sector: excess return descending, then ticker ascending. `up_count` counts strictly positive returns. Sector and market returns are arithmetic means over eligible stocks; excess is a difference of decimal returns. Tracked/eligible/excluded counts expose missing endpoints. A current-day request uses available provisional observations. `data.provisional` is true if any eligible final endpoint bar is provisional; each stock carries its own observation status. Absent provisional observations stay excluded.
 

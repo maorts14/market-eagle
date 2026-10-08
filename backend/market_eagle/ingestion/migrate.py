@@ -1,8 +1,9 @@
-"""Apply the initial application market-data schema to an empty PostgreSQL database."""
+"""Apply versioned application migrations once, with checksum verification."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 from pathlib import Path
 
@@ -21,8 +22,29 @@ def main() -> None:
         / "migrations"
         / "001_market_data.sql"
     )
+    source = migration.read_text(encoding="utf-8")
+    checksum = hashlib.sha256(source.encode("utf-8")).hexdigest()
     with psycopg.connect(args.database_url) as conn, conn.transaction():
-        conn.execute(migration.read_text(encoding="utf-8"))
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext('market-eagle-schema'))")
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_migration "
+            "(version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())"
+        )
+        previous = conn.execute(
+            "SELECT checksum FROM schema_migration WHERE version = %s",
+            (migration.name,),
+        ).fetchone()
+        if previous is not None:
+            if previous[0] != checksum:
+                raise RuntimeError(
+                    "Applied migration checksum differs from the source file"
+                )
+            return
+        conn.execute(source)
+        conn.execute(
+            "INSERT INTO schema_migration (version, checksum) VALUES (%s, %s)",
+            (migration.name, checksum),
+        )
 
 
 if __name__ == "__main__":

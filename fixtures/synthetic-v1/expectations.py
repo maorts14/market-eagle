@@ -150,7 +150,7 @@ def main() -> None:
             "winner": volume_candidates[0] if volume_candidates else None,
         },
     }
-    (HERE / "expected-results.json").write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
+    (HERE / "expected-results.json").write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
