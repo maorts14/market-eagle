@@ -1,6 +1,6 @@
 # Market-data API evaluation
 
-Documentation review: **2026-10-08**. This compares official provider documentation with the [accepted requirements](decision-tree.md) and [workflow design](workflows.md). No authenticated API request or license confirmation has been performed. **Alpaca Basic remains a private-development candidate, not a verified provider selection.** This documentation review is sufficient for the definition handoff; the authenticated checks below belong to implementation validation.
+Documentation review and first authenticated paper-account probe: **2026-10-08**. This compares official provider documentation with the [accepted requirements](decision-tree.md) and [workflow design](workflows.md). The authenticated results below validate access to several endpoints; they do not establish after-hours behavior, data rights, or a final provider selection.
 
 ## Required fit
 
@@ -38,6 +38,14 @@ FMP's [pricing page](https://site.financialmodelingprep.com/developer/docs/prici
 The earlier 2026-10-06 comparison was a published-plan screen, not an authenticated benchmark: [Twelve Data Basic](https://twelvedata.com/pricing) has tight per-minute/daily credits for repeated 500-symbol refreshes; [Massive Stocks Basic](https://massive.com/pricing) advertises two historical years and end-of-day access; [Alpha Vantage free](https://www.alphavantage.co/support/) has 25 requests/day and premium US delayed/real-time data. None currently provides a documented replacement for the full first-release workload. Recheck entitlements before switching candidates.
 
 ## Authenticated implementation probe and provider-selection gate
+
+### First paper-account observation, 2026-10-08
+
+Using an Alpaca paper key, the read-only probe in `scripts/probe_alpaca.py` requested raw SIP daily bars for AAPL, MSFT, AMZN, GOOG, and JPM across roughly five years. At 17:39 UTC during the US regular session, the request succeeded with **1,257 bars per symbol**, about **708 KB** of JSON, and no next-page token. Two observed response times were about **1.5 and 6.1 seconds**. The rate-limit response header showed 199 remaining after each request; this is an observation, not a throughput guarantee.
+
+An authenticated historical `1Day` request ending 20 minutes before the probe returned a current-day bar for all five symbols. A separate `feed=delayed_sip` snapshot request also returned `dailyBar` for all five. Their same-day `t` fields were the same 04:00 UTC session anchor. Their close and volume values differed at this instant, consistent with distinct delayed cutoffs; **`t` is not a publication or finality timestamp**. The snapshot's `latestTrade.t` was about 15 minutes behind probe time, but that trade timestamp is not itself the daily bar's as-of time. Collection must retain its own `fetched_at` and mark the as-of kind as fetched unless the provider supplies a bar-specific publication timestamp.
+
+This probe confirms that the paper account can obtain the requested five-year SIP history and a provisional current-day daily bar through both routes. It does **not** yet confirm same-day after-hours volume revisions, correction behavior, split/rename quality, full-universe throughput, FMP catalog access, or redistribution rights. A later-session repeat should compare the same session's volume and OHLC at regular close, after hours, and the following day. Credentials are only in ignored local configuration.
 
 1. With a Basic key, request five years of `1Day` `feed=sip` bars for five symbols with `limit=10000`. Follow all page tokens; record counts, bytes, latency, 429/rate headers, and invalid-symbol behavior. Include a preceding close, split, rename, and narrow stock/date repair. No key is stored in this repository.
 2. During and after a regular session, compare historical `1Day` ending at least 15 minutes ago with multi-symbol snapshots using `feed=delayed_sip`. Record Basic entitlement, cumulative-bar behavior, after-hours volume revisions to the same dated bar, timestamps/as-of semantics, and coverage at refresh ticks. Use a bounded after-close check window and refetch the prior session later; do not require proof of an exact provider-final time. If neither endpoint works, probe time-filtered minute-bar aggregation and its API cost before selecting it.
