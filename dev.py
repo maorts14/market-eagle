@@ -73,7 +73,7 @@ def fixture_check() -> None:
         run(sys.executable, str(replica / "generate.py"))
         run(sys.executable, str(replica / "expectations.py"))
         for filename in ("sessions.csv", "catalog.csv", "bars.csv", "manifest.json", "expected-results.json"):
-            if (source / filename).read_bytes() != (replica / filename).read_bytes():
+            if (source / filename).read_text(encoding="utf-8") != (replica / filename).read_text(encoding="utf-8"):
                 raise RuntimeError(f"Committed fixture differs from deterministic regeneration: {filename}")
     print("Synthetic fixture matches its generators", flush=True)
 
