@@ -26,13 +26,30 @@ def create_explorer_router(repository: AnalyticsRepository) -> APIRouter:
 def install_analytics_errors(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def request_error(_request: Request, error: RequestValidationError):
-        return JSONResponse(status_code=422, content={"error": {
-            "code": "unsupported_requested_value", "message": "Invalid explorer request",
-            "details": {"fields": [".".join(map(str, issue["loc"])) for issue in error.errors()]},
-        }})
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": {
+                    "code": "unsupported_requested_value",
+                    "message": "Invalid explorer request",
+                    "details": {
+                        "fields": [
+                            ".".join(map(str, issue["loc"])) for issue in error.errors()
+                        ]
+                    },
+                }
+            },
+        )
 
     @app.exception_handler(AnalyticsError)
     async def analytics_error(_request: Request, error: AnalyticsError):
-        return JSONResponse(status_code=error.status, content={"error": {
-            "code": error.code, "message": error.message, "details": error.details,
-        }})
+        return JSONResponse(
+            status_code=error.status,
+            content={
+                "error": {
+                    "code": error.code,
+                    "message": error.message,
+                    "details": error.details,
+                }
+            },
+        )
