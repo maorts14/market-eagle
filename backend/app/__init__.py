@@ -1,1 +1,0 @@
-"""Market Eagle application package."""

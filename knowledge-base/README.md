@@ -1,6 +1,6 @@
 # Knowledge base
 
-This directory is the product and architecture baseline for the rebuild on the `definition` branch. The existing application is a reference prototype, not the target design. The definition is ready to commit and push; documented provider, price-policy, and operating-value checks remain for implementation and release. No authenticated provider probe is required to publish this definition.
+This directory is the product and architecture baseline for the rebuild. The reference prototype was removed from the `definition` branch after this baseline was pushed; its code remains in earlier Git history. Documented provider, price-policy, and operating-value checks remain for implementation and release. No authenticated provider probe was required to publish this definition.
 
 For the system's logical order, read [product-direction.md](product-direction.md) → [domain-language.md](domain-language.md) → [system-architecture.md](system-architecture.md) → [workflows.md](workflows.md) → [data-model.md](data-model.md) → [analysis-scope.md](analysis-scope.md). The [seven-page diagram](diagrams/market-eagle-architecture.drawio) follows the same paths. [decision-tree.md](decision-tree.md) separates accepted choices from unresolved ones.
 
@@ -24,8 +24,9 @@ For the system's logical order, read [product-direction.md](product-direction.md
 | [operations-and-load.md](operations-and-load.md) | Capacity, load controls, reliability, security, and deployment |
 | [technology-tradeoffs.md](technology-tradeoffs.md) | Storage, query engine, workflow, deployment, and framework comparisons |
 | [homelab-inventory.sh](homelab-inventory.sh) | Read-only Linux hardware and runtime inventory script |
+| [implementation-plan.md](implementation-plan.md) | Branch flow, implementation stages, and agent responsibilities |
 
-The accepted product behavior, analytical contract, and service boundaries are recorded here. Some storage, provider, and deployment mechanisms remain proposals and are labeled in their files. The root `README.md` describes the reference prototype; its old `docs/architecture.md` has been retired because it described a different Iceberg/Trino product.
+The accepted product behavior, analytical contract, and service boundaries are recorded here. Some storage, provider, and deployment mechanisms remain proposals and are labeled in their files. The removed root `README.md` and `docs/architecture.md` described the retired Iceberg/Trino prototype and remain available in earlier Git history.
 
 ## Handoff gates after the definition is pushed
 

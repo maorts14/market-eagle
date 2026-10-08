@@ -1,6 +1,6 @@
 # System architecture blueprint
 
-Status: **proposal for review**, except where a choice is explicitly marked accepted. The existing application is a reference prototype. The [editable architecture workbook](diagrams/market-eagle-architecture.drawio) shows the same boundaries and flows.
+Status: **definition baseline**, with accepted choices and still-proposed mechanisms marked in the text. The retired reference prototype remains in earlier Git history. The [editable architecture workbook](diagrams/market-eagle-architecture.drawio) shows the same boundaries and flows.
 
 ## Read the system in two paths
 

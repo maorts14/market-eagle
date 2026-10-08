@@ -1,6 +1,6 @@
 # Reference prototype assessment
 
-Reviewed on 2026-10-05. This records behavior in the repository, not a decision to preserve it.
+Reviewed on 2026-10-05. This records behavior of the reference prototype before its removal from the `definition` branch. The code paths below are historical and remain available in earlier Git history; they are not a decision to preserve that implementation.
 
 ## Present behavior
 
