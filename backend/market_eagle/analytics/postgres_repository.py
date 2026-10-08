@@ -99,7 +99,7 @@ class PostgresAnalyticsRepository:
             )
             bars = conn.execute(
                 """SELECT b.stock_id, b.session_date, b.close, b.volume, b.vwap,
-                              b.traded_notional, b.provider_as_of,
+                              b.traded_notional, b.provider_as_of, b.as_of_kind,
                               b.observation_status
                        FROM selected_daily_bar b
                        JOIN universe_member m ON m.stock_id = b.stock_id
@@ -132,6 +132,7 @@ class PostgresAnalyticsRepository:
                     vwap=row["vwap"],
                     traded_notional=row["traded_notional"],
                     provider_as_of=row["provider_as_of"],
+                    as_of_kind=row["as_of_kind"],
                     status=row["observation_status"],
                 )
                 for row in bars

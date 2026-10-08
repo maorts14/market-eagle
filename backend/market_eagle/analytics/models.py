@@ -29,6 +29,7 @@ class Bar:
     vwap: Decimal | None
     traded_notional: Decimal | None
     provider_as_of: datetime
+    as_of_kind: Literal["provider", "fetched"]
     status: str
 
 

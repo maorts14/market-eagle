@@ -148,6 +148,7 @@ class AnalyticsService:
                 "final_close": last_bar.close,
                 "final_observation_status": last_bar.status,
                 "data_as_of": last_bar.provider_as_of,
+                "data_as_of_kind": last_bar.as_of_kind,
                 "listed_from": member.listed_from,
             }
             stock_rows.append(row)
@@ -198,6 +199,7 @@ class AnalyticsService:
             )
         )
         as_of = min((row["data_as_of"] for row in stock_rows), default=None)
+        as_of_kinds = {row["data_as_of_kind"] for row in stock_rows}
         result = {
             "contract_version": 1,
             "metric_version": "return-v1",
@@ -214,6 +216,11 @@ class AnalyticsService:
                 "feed": dataset.feed,
                 "price_basis": dataset.price_basis,
                 "as_of": as_of,
+                "as_of_kind": next(iter(as_of_kinds))
+                if len(as_of_kinds) == 1
+                else "mixed"
+                if as_of_kinds
+                else None,
                 "provisional": any(
                     row["final_observation_status"] == "provisional"
                     for row in stock_rows

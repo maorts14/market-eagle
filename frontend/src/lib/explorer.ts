@@ -10,6 +10,7 @@ export type ExplorerStock = {
   final_close: number
   final_observation_status: string
   data_as_of: string
+  data_as_of_kind: 'provider' | 'fetched'
 }
 
 export type ExplorerSector = {
@@ -45,6 +46,7 @@ export type ExplorerResponse = {
     feed: string
     price_basis: string
     as_of: string | null
+    as_of_kind: 'provider' | 'fetched' | 'mixed' | null
     provisional: boolean
     synthetic: boolean
   }
@@ -168,6 +170,7 @@ export async function getFixtureExplorer(window: WindowDates): Promise<ExplorerR
       final_close: finalClose,
       final_observation_status: final.status,
       data_as_of: final.provider_as_of,
+      data_as_of_kind: 'provider',
     })
     sector.eligible_count++
     if (stockReturn > 0) sector.up_count++
@@ -209,6 +212,7 @@ export async function getFixtureExplorer(window: WindowDates): Promise<ExplorerR
       as_of: finalBars.length
         ? finalBars.reduce((earliest, stock) => stock.data_as_of < earliest ? stock.data_as_of : earliest, finalBars[0].data_as_of)
         : null,
+      as_of_kind: finalBars.length ? 'provider' : null,
       provisional: finalBars.some((stock) => stock.final_observation_status === 'provisional'),
       synthetic: true,
     },

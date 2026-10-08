@@ -52,6 +52,7 @@ class SyntheticFixtureRepository:
                 if row["traded_notional"]
                 else None,
                 provider_as_of=datetime.fromisoformat(row["provider_as_of"]),
+                as_of_kind="provider",
                 status=row["status"],
             )
             for row in bars
