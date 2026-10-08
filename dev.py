@@ -116,15 +116,32 @@ def grant_readonly_role() -> None:
             sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role))
         )
         conn.execute(
-            sql.SQL("GRANT SELECT ON ALL TABLES IN SCHEMA public TO {}").format(
-                sql.Identifier(role)
-            )
+            sql.SQL(
+                "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
+                "REVOKE SELECT ON TABLES FROM {}"
+            ).format(sql.Identifier(values["APP_DB_USER"]), sql.Identifier(role))
         )
         conn.execute(
             sql.SQL(
-                "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA public "
-                "GRANT SELECT ON TABLES TO {}"
-            ).format(sql.Identifier(values["APP_DB_USER"]), sql.Identifier(role))
+                "REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {}"
+            ).format(sql.Identifier(role))
+        )
+        read_objects = (
+            "catalog_current",
+            "universe_snapshot",
+            "data_source",
+            "universe_member",
+            "security",
+            "sector",
+            "listing_period",
+            "trading_session",
+            "selected_daily_bar",
+        )
+        conn.execute(
+            sql.SQL("GRANT SELECT ON {} TO {}").format(
+                sql.SQL(", ").join(sql.Identifier(name) for name in read_objects),
+                sql.Identifier(role),
+            )
         )
 
 
