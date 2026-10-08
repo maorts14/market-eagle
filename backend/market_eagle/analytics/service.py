@@ -61,8 +61,6 @@ class AnalyticsService:
             raise AnalyticsError("no_comparison_session", "No preceding comparison session is available", 422)
         comparison = prior[-1]
         selected = {(bar.stock_id, bar.session_date): bar for bar in dataset.bars}
-        if not any(day == comparison for _, day in selected):
-            raise AnalyticsError("no_comparison_close", "No preceding comparison close is available", 422)
         resolved = {"comparison_session": comparison, "first_session": included[0], "last_session": included[-1]}
         return dataset, resolved, selected, included
 
@@ -120,14 +118,14 @@ class AnalyticsService:
                 "stocks": sorted(members, key=lambda row: (-row["excess_vs_sector"], row["ticker"])),
             })
         sectors.sort(key=lambda row: (row["breadth"] is None, -(row["breadth"] or Decimal(0)), row["sector_code"]))
-        as_of = max((bar.provider_as_of for bar in selected.values()), default=None)
+        as_of = min((row["data_as_of"] for row in stock_rows), default=None)
         result = {
             "contract_version": 1, "metric_version": "return-v1",
             "requested_window": window.model_dump(), "resolved_window": resolved,
             "catalog": {"snapshot_id": dataset.snapshot_id, "as_of": dataset.catalog_as_of,
                         "published_at": dataset.published_at, "tracked_count": len(dataset.members)},
             "data": {"source": dataset.source, "feed": dataset.feed, "price_basis": dataset.price_basis,
-                     "as_of": as_of, "provisional": any(bar.status == "provisional" and bar.session_date in sessions for bar in selected.values()),
+                     "as_of": as_of, "provisional": any(row["final_observation_status"] == "provisional" for row in stock_rows),
                      "synthetic": dataset.synthetic, "return_rankings_trusted": False},
             "market": {"eligible_count": len(stock_rows), "excluded_count": len(excluded), "return": market_return},
             "sectors": sectors, "exclusions": excluded,
