@@ -25,6 +25,7 @@ For the system's logical order, read [product-direction.md](product-direction.md
 | [technology-tradeoffs.md](technology-tradeoffs.md) | Storage, query engine, workflow, deployment, and framework comparisons |
 | [homelab-inventory.sh](homelab-inventory.sh) | Read-only Linux hardware and runtime inventory script |
 | [implementation-plan.md](implementation-plan.md) | Branch flow, implementation stages, and agent responsibilities |
+| [implementation-contract-v1.md](implementation-contract-v1.md) | First synthetic integration API, ownership, and fixture contract |
 
 The accepted product behavior, analytical contract, and service boundaries are recorded here. Some storage, provider, and deployment mechanisms remain proposals and are labeled in their files. The removed root `README.md` and `docs/architecture.md` described the retired Iceberg/Trino prototype and remain available in earlier Git history.
 

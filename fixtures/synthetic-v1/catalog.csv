@@ -1,0 +1,6 @@
+snapshot_id,catalog_as_of,published_at,stock_id,ticker,name,sector_code,sector_name,listed_from
+synthetic-catalog-v1,2025-12-31,2026-01-01T00:00:00Z,stock-alfa,ALFA,Alpha Fiction,TECH,Technology,2023-12-29
+synthetic-catalog-v1,2025-12-31,2026-01-01T00:00:00Z,stock-beta,BETA,Beta Fiction,TECH,Technology,2023-12-29
+synthetic-catalog-v1,2025-12-31,2026-01-01T00:00:00Z,stock-gamm,GAMM,Gamma Fiction,IND,Industrials,2023-12-29
+synthetic-catalog-v1,2025-12-31,2026-01-01T00:00:00Z,stock-delt,DELT,Delta Fiction,IND,Industrials,2023-12-29
+synthetic-catalog-v1,2025-12-31,2026-01-01T00:00:00Z,stock-epsi,EPSI,Epsilon Fiction,IND,Industrials,2025-01-02

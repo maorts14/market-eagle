@@ -1,0 +1,122 @@
+{
+  "note": "Fictional data. Fractions are rounded to 12 decimal places for fixture comparison.",
+  "explorer": {
+    "full_2025": {
+      "first_session": "2025-01-01",
+      "last_session": "2025-12-31",
+      "comparison_session": "2024-12-31",
+      "tracked_count": 5,
+      "eligible_count": 3,
+      "market_return": 0.076049688855,
+      "sectors": {
+        "IND": {
+          "eligible_count": 1,
+          "up_count": 1,
+          "breadth": 1.0,
+          "return": 0.143586833144
+        },
+        "TECH": {
+          "eligible_count": 2,
+          "up_count": 1,
+          "breadth": 0.5,
+          "return": 0.042281116711
+        }
+      },
+      "stocks": {
+        "ALFA": {
+          "return": 0.154385668413,
+          "sector_code": "TECH"
+        },
+        "BETA": {
+          "return": -0.069823434992,
+          "sector_code": "TECH"
+        },
+        "GAMM": {
+          "return": 0.143586833144,
+          "sector_code": "IND"
+        }
+      }
+    },
+    "december_2025": {
+      "first_session": "2025-12-01",
+      "last_session": "2025-12-31",
+      "comparison_session": "2025-11-28",
+      "tracked_count": 5,
+      "eligible_count": 4,
+      "market_return": 0.014825895085,
+      "sectors": {
+        "IND": {
+          "eligible_count": 2,
+          "up_count": 2,
+          "breadth": 1.0,
+          "return": 0.026974541492
+        },
+        "TECH": {
+          "eligible_count": 2,
+          "up_count": 1,
+          "breadth": 0.5,
+          "return": 0.002677248677
+        }
+      },
+      "stocks": {
+        "ALFA": {
+          "return": 0.011925925926,
+          "sector_code": "TECH"
+        },
+        "BETA": {
+          "return": -0.006571428571,
+          "sector_code": "TECH"
+        },
+        "GAMM": {
+          "return": 0.011038635223,
+          "sector_code": "IND"
+        },
+        "EPSI": {
+          "return": 0.042910447761,
+          "sector_code": "IND"
+        }
+      }
+    }
+  },
+  "gain_plus_volume_last_month_as_of_2026_01_08": {
+    "requested_start": "2025-12-01",
+    "requested_end": "2025-12-31",
+    "threshold_usd": 100000,
+    "required_fraction": 0.8,
+    "qualifying_ranked_candidates": [
+      {
+        "ticker": "EPSI",
+        "qualifying_days": 23,
+        "observed_usable_days": 23,
+        "requested_sessions": 23,
+        "fraction": 1.0,
+        "return": 0.042910447761,
+        "dollar_volume_inputs": [
+          "reported_notional"
+        ]
+      },
+      {
+        "ticker": "ALFA",
+        "qualifying_days": 23,
+        "observed_usable_days": 23,
+        "requested_sessions": 23,
+        "fraction": 1.0,
+        "return": 0.011925925926,
+        "dollar_volume_inputs": [
+          "reported_notional"
+        ]
+      }
+    ],
+    "winner": {
+      "ticker": "EPSI",
+      "qualifying_days": 23,
+      "observed_usable_days": 23,
+      "requested_sessions": 23,
+      "fraction": 1.0,
+      "return": 0.042910447761,
+      "dollar_volume_inputs": [
+        "reported_notional"
+      ]
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "fixture_version": 1,
+  "fictional": true,
+  "calendar": "weekdays-only; not an exchange calendar",
+  "comparison_session": "2023-12-29",
+  "first_selectable_session": "2024-01-01",
+  "last_session": "2025-12-31",
+  "session_count": 524,
+  "stock_count": 5,
+  "bar_count": 2347,
+  "source": "synthetic-v1",
+  "feed": "fictional",
+  "price_basis": "synthetic_raw",
+  "reference_date_for_last_month": "2026-01-08"
+}
