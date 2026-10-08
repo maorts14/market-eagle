@@ -7,7 +7,15 @@ test data.
 
 ## Local development
 
-Install Python 3.12+ and Docker with Compose, then run:
+Install Python 3.12+, Node.js 24, and Docker with Compose. Set up the backend and frontend:
+
+```text
+python -m venv .venv
+.venv/Scripts/python -m pip install -e "./backend[dev]"   # Windows
+npm ci --prefix frontend
+```
+
+Use `.venv/bin/python` in place of `.venv/Scripts/python` on macOS or Linux. Then run:
 
 ```text
 python dev.py up
@@ -20,16 +28,16 @@ Temporal gRPC at `localhost:7233`, and the UI at
 <http://localhost:8080>. Adjust the loopback ports in `infra/.env` if needed.
 
 ```text
-python dev.py check        # repeat health checks
-python dev.py verify       # fixture, formatting, and unit checks
-python dev.py integration  # services, migrations, and synthetic API gate
-python dev.py down         # stop without deleting data
+.venv/Scripts/python dev.py check        # repeat health checks
+.venv/Scripts/python dev.py verify       # fixture, formatting, and unit checks
+.venv/Scripts/python dev.py integration  # services, migration, fixture, PostgreSQL/API checks
+.venv/Scripts/python dev.py api          # serve the PostgreSQL-backed explorer on localhost:8000
+.venv/Scripts/python dev.py down         # stop services without deleting data
 ```
 
-The backend has not been merged yet, so `verify` currently validates the
-fixture and `integration` currently validates the local services. Backend
-checks activate with `backend/pyproject.toml`; see [the infrastructure
-handoff](infra/README.md) for the required commands and test marker.
+After `integration`, start `dev.py api` in one terminal and `npm --prefix frontend run dev` in another. To use the API rather than the browser's explicitly fictional fixture adapter, set `VITE_EXPLORER_MODE=api` for the frontend process. The API uses a separate read-only PostgreSQL role; its generated local password stays in ignored `infra/.env`. The fictional fixture is repeatable, and the integration gate compares two explorer windows through PostgreSQL and HTTP with the committed calculation results.
+
+The agent's Temporal turn workflow and evaluation harness are in `backend/market_eagle/agent/`. Running free-text turns requires a configured model credential and a separate worker process. Live S&P 500 catalog publication and unrestricted market-data display remain gated by the documented provider checks.
 
 The local Compose stack is for development. It contains no provider or model
 credentials and publishes services to host loopback. The first private

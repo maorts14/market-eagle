@@ -235,10 +235,37 @@ def backend_checks(*, integration: bool) -> None:
         )
 
 
+def serve_api() -> None:
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = readonly_database_url()
+    environment["MARKET_EAGLE_SOURCE"] = "synthetic-v1"
+    environment["MARKET_EAGLE_FEED"] = "fictional"
+    environment["MARKET_EAGLE_PRICE_BASIS"] = "synthetic_raw"
+    environment["MARKET_EAGLE_EXCHANGE"] = "SYNTHETIC"
+    environment["PYTHONPATH"] = (
+        str(BACKEND) + os.pathsep + environment.get("PYTHONPATH", "")
+    )
+    run(
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "market_eagle.app:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000",
+        "--reload",
+        "--reload-dir",
+        "backend",
+        env=environment,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=("up", "down", "check", "tools", "verify", "integration")
+        "command",
+        choices=("up", "down", "check", "tools", "verify", "integration", "api"),
     )
     parser.add_argument("args", nargs=argparse.REMAINDER)
     options = parser.parse_args()
@@ -254,6 +281,8 @@ def main() -> None:
     elif options.command == "verify":
         fixture_check()
         backend_checks(integration=False)
+    elif options.command == "api":
+        serve_api()
     else:
         fixture_check()
         compose("up", "-d", "--wait")
