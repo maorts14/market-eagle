@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from market_eagle.analytics.api import create_explorer_router, install_analytics_errors
 from market_eagle.analytics.fixture_repository import SyntheticFixtureRepository
 from market_eagle.analytics.models import AnalyticalRequest
-from market_eagle.analytics.service import AnalyticsService
+from market_eagle.analytics.service import AnalyticsError, AnalyticsService
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "synthetic-v1"
 EXPECTED = json.loads((FIXTURE / "expected-results.json").read_text(encoding="utf-8"))
@@ -211,6 +211,111 @@ def test_daily_volume_fallbacks_and_observed_denominators(repository):
         by_ticker["GAMM"]["dollar_volume_formulas"][0]["formula"]
         == "share volume × daily close"
     )
+
+
+def test_frequency_only_keeps_stock_missing_return_endpoint(repository):
+    base = {
+        "request_version": 1,
+        "universe": "latest_published_catalog",
+        "window": {"start": "2025-12-01", "end": "2025-12-31"},
+        "grain": "stock",
+        "measures": ["qualifying_fraction", "qualifying_days", "observed_usable_days"],
+        "daily_conditions": [
+            {
+                "field": "daily_dollar_volume",
+                "operator": ">",
+                "value": "100000",
+                "unit": "USD",
+            }
+        ],
+        "sort": {"measure": "qualifying_fraction", "direction": "desc"},
+        "limit": 5,
+    }
+    service = AnalyticsService(repository)
+    frequency = service.execute(AnalyticalRequest.model_validate(base))
+    assert frequency["metric_version"] == "daily-frequency-v1"
+    assert frequency["data"]["as_of_kind"] == "provider"
+    assert frequency["eligible_count"] == 5
+    assert frequency["market"] == {
+        "eligible_count": 5,
+        "excluded_count": 0,
+        "return": None,
+    }
+    assert frequency["exclusions"] == []
+    delt = next(row for row in frequency["rows"] if row["ticker"] == "DELT")
+    assert delt["observed_usable_days"] == 22
+    assert delt["requested_sessions"] == 23
+    assert delt["qualifying_fraction"] == Decimal(0)
+    assert delt["period_return"] is None
+
+    mixed = service.execute(
+        AnalyticalRequest.model_validate(
+            base
+            | {
+                "measures": [*base["measures"], "period_return"],
+            }
+        )
+    )
+    assert mixed["metric_version"] == "return-v1"
+    assert mixed["eligible_count"] == 4
+    assert mixed["market"]["excluded_count"] == 1
+    assert mixed["exclusions"] == [
+        {"stock_id": "stock-delt", "ticker": "DELT", "reason": "missing_final_close"}
+    ]
+    assert "DELT" not in {row["ticker"] for row in mixed["rows"]}
+
+    full_year = base | {"window": {"start": "2025-01-01", "end": "2025-12-31"}}
+    full_frequency = service.execute(AnalyticalRequest.model_validate(full_year))
+    assert "EPSI" in {row["ticker"] for row in full_frequency["rows"]}
+    full_mixed = service.execute(
+        AnalyticalRequest.model_validate(
+            full_year
+            | {
+                "measures": [*base["measures"], "period_return"],
+            }
+        )
+    )
+    assert {item["ticker"]: item["reason"] for item in full_mixed["exclusions"]}[
+        "EPSI"
+    ] == "missing_comparison_close"
+
+
+def test_frequency_only_does_not_require_preceding_comparison_session(repository):
+    base = {
+        "request_version": 1,
+        "universe": "latest_published_catalog",
+        "window": {"start": "2023-12-29", "end": "2023-12-29"},
+        "grain": "stock",
+        "measures": ["qualifying_fraction"],
+        "daily_conditions": [
+            {"field": "volume", "operator": ">", "value": 0, "unit": "shares"}
+        ],
+        "sort": {"measure": "qualifying_fraction"},
+        "limit": 5,
+    }
+    result = AnalyticsService(repository).execute(
+        AnalyticalRequest.model_validate(base)
+    )
+    assert result["resolved_window"]["comparison_session"] is None
+    assert result["eligible_count"] == 4
+    assert result["exclusions"] == [
+        {
+            "stock_id": "stock-epsi",
+            "ticker": "EPSI",
+            "reason": "missing_usable_daily_observations",
+        }
+    ]
+    assert all(row["qualifying_fraction"] == Decimal(1) for row in result["rows"])
+    with pytest.raises(AnalyticsError) as error:
+        AnalyticsService(repository).execute(
+            AnalyticalRequest.model_validate(
+                base
+                | {
+                    "measures": ["qualifying_fraction", "period_return"],
+                }
+            )
+        )
+    assert error.value.code == "no_comparison_session"
 
 
 def test_rejects_incompatible_units_and_grain():

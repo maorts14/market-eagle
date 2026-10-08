@@ -66,7 +66,7 @@ class AnalyticsService:
         self.repository = repository
 
     def _context(
-        self, window: DateWindow
+        self, window: DateWindow, *, require_comparison: bool = True
     ) -> tuple[
         AnalyticsDataset, dict[str, Any], dict[tuple[str, date], Bar], list[date]
     ]:
@@ -88,13 +88,13 @@ class AnalyticsService:
                 "no_sessions", "No trading sessions fall in the requested window", 422
             )
         prior = [day for day in sessions if day < included[0]]
-        if not prior:
+        if require_comparison and not prior:
             raise AnalyticsError(
                 "no_comparison_session",
                 "No preceding comparison session is available",
                 422,
             )
-        comparison = prior[-1]
+        comparison = prior[-1] if require_comparison else None
         selected = {(bar.stock_id, bar.session_date): bar for bar in dataset.bars}
         resolved = {
             "comparison_session": comparison,
@@ -239,6 +239,82 @@ class AnalyticsService:
         }
         return result, selected, sessions
 
+    def _frequency_calculate(
+        self, window: DateWindow
+    ) -> tuple[
+        dict[str, Any], list[dict[str, Any]], dict[tuple[str, date], Bar], list[date]
+    ]:
+        dataset, resolved, selected, sessions = self._context(
+            window, require_comparison=False
+        )
+        stock_rows: list[dict[str, Any]] = []
+        excluded: list[dict[str, str]] = []
+        usable_bars: list[Bar] = []
+        for member in dataset.members:
+            observed = [
+                selected[(member.stock_id, day)]
+                for day in sessions
+                if (member.stock_id, day) in selected
+            ]
+            usable = [bar for bar in observed if bar.close > 0 and bar.volume >= 0]
+            if not usable:
+                excluded.append(
+                    {
+                        "stock_id": member.stock_id,
+                        "ticker": member.ticker,
+                        "reason": "missing_usable_daily_observations",
+                    }
+                )
+                continue
+            usable_bars.extend(usable)
+            stock_rows.append(
+                {
+                    "stock_id": member.stock_id,
+                    "ticker": member.ticker,
+                    "name": member.name,
+                    "sector_code": member.sector_code,
+                    "return": None,
+                    "excess_vs_sector": None,
+                    "sector_return": None,
+                    "market_return": None,
+                    "listed_from": member.listed_from,
+                }
+            )
+        as_of_kinds = {bar.as_of_kind for bar in usable_bars}
+        result = {
+            "metric_version": "daily-frequency-v1",
+            "requested_window": window.model_dump(),
+            "resolved_window": resolved,
+            "catalog": {
+                "snapshot_id": dataset.snapshot_id,
+                "as_of": dataset.catalog_as_of,
+                "published_at": dataset.published_at,
+                "tracked_count": len(dataset.members),
+            },
+            "data": {
+                "source": dataset.source,
+                "feed": dataset.feed,
+                "price_basis": dataset.price_basis,
+                "as_of": min((bar.provider_as_of for bar in usable_bars), default=None),
+                "as_of_kind": next(iter(as_of_kinds))
+                if len(as_of_kinds) == 1
+                else "mixed"
+                if as_of_kinds
+                else None,
+                "provisional": any(bar.status == "provisional" for bar in usable_bars),
+                "synthetic": dataset.synthetic,
+                "return_rankings_trusted": False,
+            },
+            "market": {
+                "eligible_count": len(stock_rows),
+                "excluded_count": len(excluded),
+                "return": None,
+            },
+            "exclusions": excluded,
+            "calculated_at": datetime.now(timezone.utc),
+        }
+        return result, stock_rows, selected, sessions
+
     def explorer(self, start: date, end: date) -> dict[str, Any]:
         try:
             window = DateWindow(start=start, end=end)
@@ -254,17 +330,32 @@ class AnalyticsService:
         return result
 
     def execute(self, request: AnalyticalRequest) -> dict[str, Any]:
-        result, selected, sessions = self._calculate(request.window)
-        stock_rows = [
-            dict(
-                stock,
-                sector_code=sector["sector_code"],
-                sector_return=sector["return"],
-                market_return=result["market"]["return"],
+        return_measures = {
+            "period_return",
+            "excess_vs_sector",
+            "sector_return",
+            "market_return",
+            "breadth",
+        }
+        requires_return = request.grain == "sector" or bool(
+            return_measures.intersection(request.measures)
+        )
+        if requires_return:
+            result, selected, sessions = self._calculate(request.window)
+            stock_rows = [
+                dict(
+                    stock,
+                    sector_code=sector["sector_code"],
+                    sector_return=sector["return"],
+                    market_return=result["market"]["return"],
+                )
+                for sector in result["sectors"]
+                for stock in sector["stocks"]
+            ]
+        else:
+            result, stock_rows, selected, sessions = self._frequency_calculate(
+                request.window
             )
-            for sector in result["sectors"]
-            for stock in sector["stocks"]
-        ]
         filtered = []
         for row in stock_rows:
             if not all(

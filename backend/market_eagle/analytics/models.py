@@ -50,9 +50,10 @@ class AnalyticsDataset:
 class AnalyticsRepository(Protocol):
     """One pinned catalog and one selected source/feed/basis per batch read.
 
-    The implementation must return all sessions through ``end`` (including the
-    preceding comparison session), and selected accepted bars for the resolved
-    window and comparison session. It must never mix revision candidates.
+    The implementation must return all sessions through ``end`` and selected
+    accepted bars for the requested window. Include the preceding comparison
+    session and its bars when available; return-based requests require them.
+    It must never mix revision candidates.
     """
 
     def load(self, start: date, end: date) -> AnalyticsDataset: ...
@@ -145,7 +146,7 @@ class SortSpec(BaseModel):
 
 
 class AnalyticalRequest(BaseModel):
-    """Allowlisted analytical operations, with no SQL or free-form expressions."""
+    """Allowlisted operations; daily frequency does not require return endpoints."""
 
     model_config = ConfigDict(extra="forbid")
 
