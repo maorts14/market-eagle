@@ -10,6 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from temporalio import workflow
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -23,6 +24,15 @@ from market_eagle.analytics.models import AnalyticalRequest
 from market_eagle.analytics.service import AnalyticsService
 
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "synthetic-v1"
+
+
+@workflow.defn(sandboxed=False)
+class WaitingForCancel:
+    @workflow.run
+    async def run(self):
+        await workflow.sleep(3600)
+
+
 EVALUATION = json.loads(
     (
         Path(__file__).resolve().parents[1]
@@ -343,38 +353,62 @@ def test_temporal_turn_survives_client_detachment(setup):
 
 
 def test_cancel_requested_reconciles_after_crash(setup):
+    from temporalio.service import RPCError, RPCStatusCode
     from temporalio.testing import WorkflowEnvironment
-    from temporalio.worker import Worker
 
-    store, _, activities = setup
+    store, _, _ = setup
     conversation = store.create_conversation()
     turn = store.submit(conversation, "cancel-crash", "Research this", "2026-01-08")
     store.request_cancel(turn["id"])
 
     async def run():
         async with await WorkflowEnvironment.start_time_skipping() as environment:
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                async with Worker(
-                    environment.client,
-                    task_queue="agent-cancel-test",
-                    workflows=[AgentTurnWorkflow],
-                    activities=[
-                        activities.load_context,
-                        activities.interpret,
-                        activities.execute,
-                        activities.explain,
-                        activities.finish,
-                        activities.refresh_summary,
-                    ],
-                    activity_executor=executor,
-                ):
-                    await reconcile_turn(
-                        store,
-                        environment.client,
-                        turn["id"],
-                        Limits(),
-                        "agent-cancel-test",
-                    )
+            await reconcile_turn(
+                store, environment.client, turn["id"], Limits(), "agent-cancel-test"
+            )
+            await reconcile_turn(
+                store, environment.client, turn["id"], Limits(), "agent-cancel-test"
+            )
+            handle = environment.client.get_workflow_handle(f"agent-turn-{turn['id']}")
+            with pytest.raises(RPCError) as missing:
+                await handle.describe()
+            assert missing.value.status == RPCStatusCode.NOT_FOUND
+
+    asyncio.run(run())
+    assert store.turn(turn["id"])["status"] == "cancelled"
+    assert store.conversation(conversation)["active_turn_id"] is None
+
+
+def test_cancel_requested_reconciles_existing_workflow(setup):
+    from temporalio.testing import WorkflowEnvironment
+    from temporalio.worker import Worker
+
+    store, _, _ = setup
+    conversation = store.create_conversation()
+    turn = store.submit(conversation, "cancel-running", "Research this", "2026-01-08")
+
+    async def run():
+        async with (
+            await WorkflowEnvironment.start_time_skipping() as environment,
+            Worker(
+                environment.client,
+                task_queue="agent-existing-cancel-test",
+                workflows=[WaitingForCancel],
+            ),
+        ):
+            await environment.client.start_workflow(
+                WaitingForCancel.run,
+                id=f"agent-turn-{turn['id']}",
+                task_queue="agent-existing-cancel-test",
+            )
+            store.request_cancel(turn["id"])
+            await reconcile_turn(
+                store,
+                environment.client,
+                turn["id"],
+                Limits(),
+                "agent-existing-cancel-test",
+            )
 
     asyncio.run(run())
     assert store.turn(turn["id"])["status"] == "cancelled"
