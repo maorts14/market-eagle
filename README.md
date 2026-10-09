@@ -32,12 +32,21 @@ Temporal gRPC at `localhost:7233`, and the UI at
 .venv/Scripts/python dev.py verify       # fixture, formatting, and unit checks
 .venv/Scripts/python dev.py integration  # services, migration, fixture, PostgreSQL/API checks
 .venv/Scripts/python dev.py api          # serve the PostgreSQL-backed explorer on localhost:8000
+.venv/Scripts/python dev.py agent-worker # run the research-agent Temporal worker
 .venv/Scripts/python dev.py down         # stop services without deleting data
 ```
 
 After `integration`, start `dev.py api` in one terminal and `npm --prefix frontend run dev` in another. To use the API rather than the browser's explicitly fictional fixture adapter, set `VITE_EXPLORER_MODE=api` for the frontend process. The API uses a separate read-only PostgreSQL role; its generated local password stays in ignored `infra/.env`. The fictional fixture is repeatable, and the integration gate compares two explorer windows through PostgreSQL and HTTP with the committed calculation results.
 
-The agent's Temporal turn workflow and evaluation harness are in `backend/market_eagle/agent/`. Running free-text turns requires a configured model credential and a separate worker process. Live S&P 500 catalog publication and unrestricted market-data display remain gated by the documented provider checks.
+The API also mounts `/api/v1/agent` and stores conversations in ignored
+`local-data/agent.sqlite`. To run free-text turns, add `OPENAI_API_KEY` and
+`OPENAI_MODEL` to ignored `infra/.env`, then start `dev.py agent-worker` in a
+separate terminal. The API process receives no model or Alpaca credential; the
+worker receives the model credential and the same read-only database role as
+the explorer. The Temporal workflow and evaluation harness are in
+`backend/market_eagle/agent/`. The integration check uses a fixed test model,
+not a live model call. Live S&P 500 catalog publication and unrestricted
+market-data display remain gated by the documented provider checks.
 
 The local Compose stack is for development. It contains no provider or model
 credentials and publishes services to host loopback. The first private

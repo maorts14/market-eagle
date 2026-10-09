@@ -254,11 +254,16 @@ def backend_checks(*, integration: bool) -> None:
 
 def serve_api() -> None:
     environment = os.environ.copy()
+    for key in ("OPENAI_API_KEY", "ALPACA_API_KEY_ID", "ALPACA_API_SECRET_KEY"):
+        environment.pop(key, None)
     environment["DATABASE_URL"] = readonly_database_url()
     environment["MARKET_EAGLE_SOURCE"] = "synthetic-v1"
     environment["MARKET_EAGLE_FEED"] = "fictional"
     environment["MARKET_EAGLE_PRICE_BASIS"] = "synthetic_raw"
     environment["MARKET_EAGLE_EXCHANGE"] = "SYNTHETIC"
+    environment["MARKET_EAGLE_AGENT_ENABLED"] = "1"
+    environment["AGENT_STORE_PATH"] = str(ROOT / "local-data" / "agent.sqlite")
+    environment["TEMPORAL_ADDRESS"] = "localhost:7233"
     environment["PYTHONPATH"] = (
         str(BACKEND) + os.pathsep + environment.get("PYTHONPATH", "")
     )
@@ -278,11 +283,39 @@ def serve_api() -> None:
     )
 
 
+def serve_agent_worker() -> None:
+    environment = os.environ.copy()
+    values = local_env()
+    environment["DATABASE_URL"] = readonly_database_url()
+    environment["MARKET_EAGLE_SOURCE"] = "synthetic-v1"
+    environment["MARKET_EAGLE_FEED"] = "fictional"
+    environment["MARKET_EAGLE_PRICE_BASIS"] = "synthetic_raw"
+    environment["MARKET_EAGLE_EXCHANGE"] = "SYNTHETIC"
+    environment["AGENT_STORE_PATH"] = str(ROOT / "local-data" / "agent.sqlite")
+    environment["TEMPORAL_ADDRESS"] = "localhost:7233"
+    for key in ("OPENAI_API_KEY", "OPENAI_MODEL"):
+        if values.get(key):
+            environment[key] = values[key]
+    environment["PYTHONPATH"] = (
+        str(BACKEND) + os.pathsep + environment.get("PYTHONPATH", "")
+    )
+    run(sys.executable, "-m", "market_eagle.agent", env=environment)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=("up", "down", "check", "tools", "verify", "integration", "api"),
+        choices=(
+            "up",
+            "down",
+            "check",
+            "tools",
+            "verify",
+            "integration",
+            "api",
+            "agent-worker",
+        ),
     )
     parser.add_argument("args", nargs=argparse.REMAINDER)
     options = parser.parse_args()
@@ -300,6 +333,8 @@ def main() -> None:
         backend_checks(integration=False)
     elif options.command == "api":
         serve_api()
+    elif options.command == "agent-worker":
+        serve_agent_worker()
     else:
         fixture_check()
         compose("up", "-d", "--wait")
