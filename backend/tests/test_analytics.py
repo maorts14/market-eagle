@@ -346,6 +346,30 @@ def test_rejects_incompatible_units_and_grain():
         AnalyticalRequest.model_validate(common | {"grain": "sector"})
 
 
+def test_sector_grain_only_accepts_sector_predicates(repository):
+    base = {
+        "request_version": 1,
+        "universe": "latest_published_catalog",
+        "window": {"start": "2025-12-01", "end": "2025-12-31"},
+        "grain": "sector",
+        "measures": ["breadth"],
+        "sort": {"measure": "breadth"},
+        "limit": 10,
+    }
+    for field, value in (("ticker", "ALFA"), ("stock_id", "stock-alfa")):
+        with pytest.raises(ValidationError, match="sector_code predicates"):
+            AnalyticalRequest.model_validate(
+                base
+                | {"predicates": [{"field": field, "operator": "=", "value": value}]}
+            )
+    request = AnalyticalRequest.model_validate(
+        base
+        | {"predicates": [{"field": "sector_code", "operator": "=", "value": "TECH"}]}
+    )
+    result = AnalyticsService(repository).execute(request)
+    assert [row["sector_code"] for row in result["rows"]] == ["TECH"]
+
+
 def test_absolute_count_and_observed_fraction_are_distinct(repository):
     base = {
         "request_version": 1,

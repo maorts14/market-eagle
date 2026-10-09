@@ -194,6 +194,8 @@ class AnalyticalRequest(BaseModel):
         else:
             if self.group_by not in ([], ["sector_code"]):
                 raise ValueError("sector grain groups by sector_code")
+            if any(predicate.field != "sector_code" for predicate in self.predicates):
+                raise ValueError("sector grain accepts only sector_code predicates")
             if self.daily_conditions or self.reduction:
                 raise ValueError("daily frequency requires stock grain")
             if self.sort.measure not in {"breadth", "sector_return"}:
