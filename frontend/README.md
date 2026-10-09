@@ -24,6 +24,14 @@ npm run lint
 
 The adapter tests compare both committed windows with `fixtures/synthetic-v1/expected-results.json`. The screen reports requested and resolved sessions, comparison close, coverage, source/feed, price basis, data as-of time, catalog as-of date, and provisional status when present. Production return rankings remain untrusted until the price adjustment basis is decided.
 
+## Research agent conversation
+
+The workbench includes a collapsible conversation panel. It supports one active turn per conversation, follow-up questions, reconnectable progress, cancellation, clarification, unsupported and failed answers, and expandable calculation evidence. Primary numbers and source facts come from `trusted_result`; model prose is rendered separately as interpretation. Deletion requires an explicit inline confirmation that turns and evidence are permanent and the initial deployment has no backup.
+
+The default `VITE_AGENT_MODE=fixture` is a clearly labeled, deterministic UI demonstration. It replays the documented December 2025 gain-plus-dollar-volume case and one follow-up from `fixtures/synthetic-v1/expected-results.json`; other questions return a fixture limitation, not a fabricated answer. `src/lib/agent.ts` also provides the real HTTP adapter. Set `VITE_AGENT_MODE=api` when `/api/v1/agent` is mounted with its store, Temporal client, and worker. The development proxy already forwards `/api` to port 8000. The current backend `create_app()` mounts the explorer route only, so this integration remains a separate application wiring step.
+
+The API has no list-conversations route yet. The selector therefore lists IDs created in this browser and labels them “Recent on this device”; it cannot provide the product's planned shared pre-authentication conversation list until that endpoint exists.
+
 ## Design notes
 
 This is an operating surface for repeated trader research. The left table ranks sectors only by breadth; return and market difference remain context. The right table ranks eligible stocks by excess over the selected sector. Selection uses a single muted green accent. Tables scroll horizontally on narrow screens and remain keyboard focusable. Dates, source, and coverage stay visible above the tables, with full calculation evidence below.
