@@ -1,0 +1,247 @@
+{
+  "note": "Fictional data. Fractions are rounded to 12 decimal places for fixture comparison.",
+  "explorer": {
+    "full_2025": {
+      "first_session": "2025-01-01",
+      "last_session": "2025-12-31",
+      "comparison_session": "2024-12-31",
+      "tracked_count": 5,
+      "eligible_count": 3,
+      "excluded_count": 2,
+      "exclusions": [
+        {
+          "ticker": "DELT",
+          "reason": "missing_final_close"
+        },
+        {
+          "ticker": "EPSI",
+          "reason": "missing_comparison_close"
+        }
+      ],
+      "market_return": 0.076049688855,
+      "sectors": {
+        "IND": {
+          "tracked_count": 3,
+          "eligible_count": 1,
+          "excluded_count": 2,
+          "up_count": 1,
+          "breadth": 1.0,
+          "return": 0.143586833144,
+          "excess_vs_market": 0.067537144289
+        },
+        "TECH": {
+          "tracked_count": 2,
+          "eligible_count": 2,
+          "excluded_count": 0,
+          "up_count": 1,
+          "breadth": 0.5,
+          "return": 0.042281116711,
+          "excess_vs_market": -0.033768572145
+        }
+      },
+      "sector_order": [
+        "IND",
+        "TECH"
+      ],
+      "stock_order": {
+        "IND": [
+          "GAMM"
+        ],
+        "TECH": [
+          "ALFA",
+          "BETA"
+        ]
+      },
+      "stocks": {
+        "ALFA": {
+          "return": 0.154385668413,
+          "sector_code": "TECH",
+          "excess_vs_sector": 0.112104551703
+        },
+        "BETA": {
+          "return": -0.069823434992,
+          "sector_code": "TECH",
+          "excess_vs_sector": -0.112104551703
+        },
+        "GAMM": {
+          "return": 0.143586833144,
+          "sector_code": "IND",
+          "excess_vs_sector": 0.0
+        }
+      }
+    },
+    "december_2025": {
+      "first_session": "2025-12-01",
+      "last_session": "2025-12-31",
+      "comparison_session": "2025-11-28",
+      "tracked_count": 5,
+      "eligible_count": 4,
+      "excluded_count": 1,
+      "exclusions": [
+        {
+          "ticker": "DELT",
+          "reason": "missing_final_close"
+        }
+      ],
+      "market_return": 0.014825895085,
+      "sectors": {
+        "IND": {
+          "tracked_count": 3,
+          "eligible_count": 2,
+          "excluded_count": 1,
+          "up_count": 2,
+          "breadth": 1.0,
+          "return": 0.026974541492,
+          "excess_vs_market": 0.012148646407
+        },
+        "TECH": {
+          "tracked_count": 2,
+          "eligible_count": 2,
+          "excluded_count": 0,
+          "up_count": 1,
+          "breadth": 0.5,
+          "return": 0.002677248677,
+          "excess_vs_market": -0.012148646407
+        }
+      },
+      "sector_order": [
+        "IND",
+        "TECH"
+      ],
+      "stock_order": {
+        "IND": [
+          "EPSI",
+          "GAMM"
+        ],
+        "TECH": [
+          "ALFA",
+          "BETA"
+        ]
+      },
+      "stocks": {
+        "ALFA": {
+          "return": 0.011925925926,
+          "sector_code": "TECH",
+          "excess_vs_sector": 0.009248677249
+        },
+        "BETA": {
+          "return": -0.006571428571,
+          "sector_code": "TECH",
+          "excess_vs_sector": -0.009248677249
+        },
+        "GAMM": {
+          "return": 0.011038635223,
+          "sector_code": "IND",
+          "excess_vs_sector": -0.015935906269
+        },
+        "EPSI": {
+          "return": 0.042910447761,
+          "sector_code": "IND",
+          "excess_vs_sector": 0.015935906269
+        }
+      }
+    }
+  },
+  "gain_plus_volume_last_month_as_of_2026_01_08": {
+    "requested_start": "2025-12-01",
+    "requested_end": "2025-12-31",
+    "threshold_usd": 100000,
+    "required_fraction": 0.8,
+    "requested_stock_count": 5,
+    "evaluated_stock_count": 4,
+    "excluded_stock_count": 1,
+    "exclusions": [
+      {
+        "ticker": "DELT",
+        "reason": "missing_final_close"
+      }
+    ],
+    "frequency_by_stock": {
+      "ALFA": {
+        "qualifying_days": 23,
+        "observed_usable_days": 23,
+        "requested_sessions": 23,
+        "fraction": 1.0,
+        "dollar_volume_inputs": [
+          "reported_notional"
+        ],
+        "has_period_return": true
+      },
+      "BETA": {
+        "qualifying_days": 0,
+        "observed_usable_days": 23,
+        "requested_sessions": 23,
+        "fraction": 0.0,
+        "dollar_volume_inputs": [
+          "volume_x_vwap_estimate"
+        ],
+        "has_period_return": true
+      },
+      "GAMM": {
+        "qualifying_days": 8,
+        "observed_usable_days": 22,
+        "requested_sessions": 23,
+        "fraction": 0.363636363636,
+        "dollar_volume_inputs": [
+          "volume_x_close_estimate"
+        ],
+        "has_period_return": true
+      },
+      "DELT": {
+        "qualifying_days": 0,
+        "observed_usable_days": 22,
+        "requested_sessions": 23,
+        "fraction": 0.0,
+        "dollar_volume_inputs": [
+          "volume_x_vwap_estimate"
+        ],
+        "has_period_return": false
+      },
+      "EPSI": {
+        "qualifying_days": 23,
+        "observed_usable_days": 23,
+        "requested_sessions": 23,
+        "fraction": 1.0,
+        "dollar_volume_inputs": [
+          "reported_notional"
+        ],
+        "has_period_return": true
+      }
+    },
+    "qualifying_ranked_candidates": [
+      {
+        "ticker": "EPSI",
+        "qualifying_days": 23,
+        "observed_usable_days": 23,
+        "requested_sessions": 23,
+        "fraction": 1.0,
+        "return": 0.042910447761,
+        "dollar_volume_inputs": [
+          "reported_notional"
+        ]
+      },
+      {
+        "ticker": "ALFA",
+        "qualifying_days": 23,
+        "observed_usable_days": 23,
+        "requested_sessions": 23,
+        "fraction": 1.0,
+        "return": 0.011925925926,
+        "dollar_volume_inputs": [
+          "reported_notional"
+        ]
+      }
+    ],
+    "winner": {
+      "ticker": "EPSI",
+      "qualifying_days": 23,
+      "observed_usable_days": 23,
+      "requested_sessions": 23,
+      "fraction": 1.0,
+      "return": 0.042910447761,
+      "dollar_volume_inputs": [
+        "reported_notional"
+      ]
+    }
+  }
+}
