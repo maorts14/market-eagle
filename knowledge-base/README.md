@@ -22,6 +22,7 @@ For the system's logical order, read [product-direction.md](product-direction.md
 | [storage-rationale.md](storage-rationale.md) | PostgreSQL versus Iceberg decision and raw archive explanation |
 | [workflows.md](workflows.md) | Ordered catalog, price, explorer, and later agent flows with Temporal's control role |
 | [operations-and-load.md](operations-and-load.md) | Capacity, load controls, reliability, security, and deployment |
+| [adr/0001-private-homelab-runtime.md](adr/0001-private-homelab-runtime.md) | Proposed first homelab deployment topology and implementation handoffs |
 | [technology-tradeoffs.md](technology-tradeoffs.md) | Storage, query engine, workflow, deployment, and framework comparisons |
 | [homelab-inventory.sh](homelab-inventory.sh) | Read-only Linux hardware and runtime inventory script |
 | [implementation-plan.md](implementation-plan.md) | Branch flow, implementation stages, and agent responsibilities |
