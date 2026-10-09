@@ -48,6 +48,10 @@ def local_env() -> dict[str, str]:
             stream.write(
                 f"\nAPP_DB_READONLY_PASSWORD={values['APP_DB_READONLY_PASSWORD']}\n"
             )
+    if not values.get("APP_DB_AGENT_PASSWORD"):
+        values["APP_DB_AGENT_PASSWORD"] = secrets.token_urlsafe(24)
+        with ENV.open("a", encoding="utf-8") as stream:
+            stream.write(f"\nAPP_DB_AGENT_PASSWORD={values['APP_DB_AGENT_PASSWORD']}\n")
     return values
 
 
@@ -74,6 +78,17 @@ def readonly_database_url() -> str:
     return (
         f"postgresql://{quote(values.get('APP_DB_READONLY_USER', 'market_eagle_reader'))}:"
         f"{quote(values['APP_DB_READONLY_PASSWORD'])}@127.0.0.1:"
+        f"{values.get('APP_DB_PORT', '55432')}/{quote(values['APP_DB_NAME'])}"
+    )
+
+
+def agent_database_url() -> str:
+    values = local_env()
+    from urllib.parse import quote
+
+    return (
+        f"postgresql://{quote(values.get('APP_DB_AGENT_USER', 'market_eagle_agent'))}:"
+        f"{quote(values['APP_DB_AGENT_PASSWORD'])}@127.0.0.1:"
         f"{values.get('APP_DB_PORT', '55432')}/{quote(values['APP_DB_NAME'])}"
     )
 
@@ -140,6 +155,67 @@ def grant_readonly_role() -> None:
         conn.execute(
             sql.SQL("GRANT SELECT ON {} TO {}").format(
                 sql.SQL(", ").join(sql.Identifier(name) for name in read_objects),
+                sql.Identifier(role),
+            )
+        )
+
+
+def grant_agent_role() -> None:
+    import psycopg
+    from psycopg import sql
+
+    values = local_env()
+    role = values.get("APP_DB_AGENT_USER", "market_eagle_agent")
+    with psycopg.connect(database_url(), autocommit=True) as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM pg_roles WHERE rolname = %s", (role,)
+        ).fetchone()
+        if exists:
+            conn.execute(
+                sql.SQL("ALTER ROLE {} PASSWORD {}").format(
+                    sql.Identifier(role), sql.Literal(values["APP_DB_AGENT_PASSWORD"])
+                )
+            )
+        else:
+            conn.execute(
+                sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(
+                    sql.Identifier(role), sql.Literal(values["APP_DB_AGENT_PASSWORD"])
+                )
+            )
+        conn.execute(
+            sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                sql.Identifier(values["APP_DB_NAME"]), sql.Identifier(role)
+            )
+        )
+        conn.execute(
+            sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role))
+        )
+        conn.execute(
+            sql.SQL(
+                "REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {}"
+            ).format(sql.Identifier(role))
+        )
+        agent_tables = (
+            "agent_conversation",
+            "agent_turn",
+            "agent_evidence",
+            "agent_turn_trace",
+        )
+        conn.execute(
+            sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON {} TO {}").format(
+                sql.SQL(", ").join(sql.Identifier(name) for name in agent_tables),
+                sql.Identifier(role),
+            )
+        )
+        conn.execute(
+            sql.SQL("GRANT USAGE ON SEQUENCE {} TO {}").format(
+                sql.SQL(", ").join(
+                    sql.Identifier(name)
+                    for name in (
+                        "agent_turn_sequence_id_seq",
+                        "agent_turn_trace_id_seq",
+                    )
+                ),
                 sql.Identifier(role),
             )
         )
@@ -236,7 +312,9 @@ def backend_checks(*, integration: bool) -> None:
         run(sys.executable, "-m", "market_eagle.ingestion.migrate", env=environment)
         run(sys.executable, "-m", "market_eagle.ingestion.fixture", env=environment)
         grant_readonly_role()
+        grant_agent_role()
         environment["DATABASE_URL"] = readonly_database_url()
+        environment["AGENT_DATABASE_URL"] = agent_database_url()
         run(
             sys.executable,
             "-m",
@@ -267,7 +345,7 @@ def serve_api() -> None:
     environment["MARKET_EAGLE_PRICE_BASIS"] = "synthetic_raw"
     environment["MARKET_EAGLE_EXCHANGE"] = "SYNTHETIC"
     environment["MARKET_EAGLE_AGENT_ENABLED"] = "1"
-    environment["AGENT_STORE_PATH"] = str(ROOT / "local-data" / "agent.sqlite")
+    environment["AGENT_DATABASE_URL"] = agent_database_url()
     environment["TEMPORAL_ADDRESS"] = "localhost:7233"
     environment["PYTHONPATH"] = (
         str(BACKEND) + os.pathsep + environment.get("PYTHONPATH", "")
@@ -296,7 +374,7 @@ def serve_agent_worker() -> None:
     environment["MARKET_EAGLE_FEED"] = "fictional"
     environment["MARKET_EAGLE_PRICE_BASIS"] = "synthetic_raw"
     environment["MARKET_EAGLE_EXCHANGE"] = "SYNTHETIC"
-    environment["AGENT_STORE_PATH"] = str(ROOT / "local-data" / "agent.sqlite")
+    environment["AGENT_DATABASE_URL"] = agent_database_url()
     environment["TEMPORAL_ADDRESS"] = "localhost:7233"
     for key in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL"):
         if values.get(key):
@@ -305,6 +383,23 @@ def serve_agent_worker() -> None:
         str(BACKEND) + os.pathsep + environment.get("PYTHONPATH", "")
     )
     run(sys.executable, "-m", "market_eagle.agent", env=environment)
+
+
+def migrate_agent_store() -> None:
+    source = ROOT / "local-data" / "agent.sqlite"
+    environment = os.environ.copy()
+    environment["AGENT_DATABASE_URL"] = agent_database_url()
+    environment["PYTHONPATH"] = (
+        str(BACKEND) + os.pathsep + environment.get("PYTHONPATH", "")
+    )
+    run(
+        sys.executable,
+        "-m",
+        "market_eagle.agent.migrate_sqlite",
+        "--source",
+        str(source),
+        env=environment,
+    )
 
 
 def main() -> None:
@@ -320,6 +415,7 @@ def main() -> None:
             "integration",
             "api",
             "agent-worker",
+            "migrate-agent-store",
         ),
     )
     parser.add_argument("args", nargs=argparse.REMAINDER)
@@ -340,6 +436,8 @@ def main() -> None:
         serve_api()
     elif options.command == "agent-worker":
         serve_agent_worker()
+    elif options.command == "migrate-agent-store":
+        migrate_agent_store()
     else:
         fixture_check()
         compose("up", "-d", "--wait")

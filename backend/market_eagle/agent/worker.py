@@ -12,13 +12,14 @@ from market_eagle.analytics.service import AnalyticsService
 
 from .activities import AgentActivities, ResearchModel
 from .models import Limits
+from .postgres_store import PostgresAgentStore
 from .store import AgentStore
 from .workflow import AgentTurnWorkflow
 
 
 async def run_worker(
     temporal: Client,
-    store: AgentStore,
+    store: AgentStore | PostgresAgentStore,
     repository: AnalyticsRepository,
     model: ResearchModel,
     limits: Limits,

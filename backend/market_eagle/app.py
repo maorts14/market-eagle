@@ -12,6 +12,7 @@ from temporalio.client import Client
 
 from .agent.api import create_agent_router
 from .agent.models import Limits
+from .agent.postgres_store import PostgresAgentStore
 from .agent.store import AgentStore
 from .analytics.api import create_explorer_router, install_analytics_errors
 from .analytics.fixture_repository import SyntheticFixtureRepository
@@ -48,7 +49,7 @@ def selected_repository() -> AnalyticsRepository:
 def create_app(
     repository: AnalyticsRepository | None = None,
     *,
-    agent_store: AgentStore | None = None,
+    agent_store: AgentStore | PostgresAgentStore | None = None,
     temporal: Client | None = None,
     agent_enabled: bool | None = None,
 ) -> FastAPI:
@@ -83,11 +84,12 @@ def create_app(
     install_analytics_errors(app)
     app.include_router(create_explorer_router(repository or selected_repository()))
     if enabled:
-        store = agent_store or AgentStore(
-            Path(
-                os.environ.get("AGENT_STORE_PATH", ROOT / "local-data" / "agent.sqlite")
-            )
-        )
+        store = agent_store
+        if store is None:
+            agent_database_url = os.environ.get("AGENT_DATABASE_URL")
+            if not agent_database_url:
+                raise RuntimeError("Agent API requires AGENT_DATABASE_URL")
+            store = PostgresAgentStore(agent_database_url)
         app.include_router(
             create_agent_router(store, lambda: app.state.temporal, Limits())
         )

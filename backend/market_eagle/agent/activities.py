@@ -11,6 +11,7 @@ from temporalio import activity
 from market_eagle.analytics.service import AnalyticsError, AnalyticsService
 
 from .models import Decision, Limits, previous_completed_month, validate_request
+from .postgres_store import PostgresAgentStore
 from .store import AgentStore
 
 
@@ -102,7 +103,7 @@ class OpenAIResearchModel:
 class AgentActivities:
     def __init__(
         self,
-        store: AgentStore,
+        store: AgentStore | PostgresAgentStore,
         analytics: AnalyticsService,
         model: ResearchModel,
         limits: Limits,

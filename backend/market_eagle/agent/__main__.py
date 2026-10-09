@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-from pathlib import Path
 
 from temporalio.client import Client
 
@@ -12,18 +11,18 @@ from market_eagle.analytics.postgres_repository import PostgresAnalyticsReposito
 
 from .models import Limits
 from .openrouter import OpenRouterResearchModel
-from .store import AgentStore
+from .postgres_store import PostgresAgentStore
 from .worker import run_worker
 
 
 async def main() -> None:
     required = (
         "DATABASE_URL",
+        "AGENT_DATABASE_URL",
         "MARKET_EAGLE_SOURCE",
         "MARKET_EAGLE_FEED",
         "MARKET_EAGLE_PRICE_BASIS",
         "MARKET_EAGLE_EXCHANGE",
-        "AGENT_STORE_PATH",
         "OPENROUTER_API_KEY",
         "OPENROUTER_MODEL",
     )
@@ -43,7 +42,7 @@ async def main() -> None:
     )
     await run_worker(
         temporal,
-        AgentStore(Path(os.environ["AGENT_STORE_PATH"])),
+        PostgresAgentStore(os.environ["AGENT_DATABASE_URL"]),
         repository,
         OpenRouterResearchModel(
             api_key=os.environ["OPENROUTER_API_KEY"],
