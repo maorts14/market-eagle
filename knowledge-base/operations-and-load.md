@@ -1,5 +1,7 @@
 # Operations, capacity, and growth
 
+The concrete private-host deployment proposal and implementation acceptance checks are in [ADR 0001](adr/0001-private-homelab-runtime.md). It preserves the no-backup decision below.
+
 Status: architecture sizing proposal using the 2026-10-06 homelab inventory. Provider behavior and actual service load remain to be measured.
 
 ## Measured homelab inventory
