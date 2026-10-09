@@ -195,9 +195,9 @@ def ingest_page(
     with conn.transaction(), conn.cursor() as cur:
         cur.execute(
             "SELECT ticker, stock_id, valid_from, valid_to FROM security_symbol "
-            "WHERE source = %s AND exchange = %s AND ticker = ANY(%s) "
+            "WHERE source = %s AND ticker = ANY(%s) "
             "AND valid_from <= %s AND (valid_to IS NULL OR valid_to >= %s)",
-            (source, exchange, requested_symbols, requested_end, requested_start),
+            (source, requested_symbols, requested_end, requested_start),
         )
         symbols = cur.fetchall()
         cur.execute(
