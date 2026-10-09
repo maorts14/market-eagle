@@ -1,6 +1,6 @@
 # Market data ingestion
 
-Apply `database/migrations/001_market_data.sql` to the application PostgreSQL database, then load the committed fictional fixture:
+Apply the repository migrations to the application PostgreSQL database, then load the committed fictional fixture:
 
 ```powershell
 $env:PYTHONPATH = "backend"
@@ -19,7 +19,7 @@ The worker also exposes a `market-catalog` queue. `CatalogPublishWorkflow` can p
 
 The [FMP current constituent endpoint](https://site.financialmodelingprep.com/developer/docs/stable/sp-500) supplies source symbols, names, sectors, sub-sectors, CIKs, and index-addition dates. It does not supply an exchange or a provider publication time. The FMP sector taxonomy is recorded as `fmp-sector-unverified-v1`, never as official GICS. `dateFirstAdded` is index membership evidence, not a listing date. CIK is company-level review evidence and does not merge distinct share lines into one stock ID.
 
-Set `FMP_API_KEY` from an FMP account and `DATABASE_URL` for the application database. Do not commit the key or approval file. Apply the migration runner first; it applies both `001` and `002` exactly once with checksum checks.
+Set `FMP_API_KEY` from an FMP account and `DATABASE_URL` for the application database. Do not commit the key or approval file. Apply the migration runner first; it applies each numbered migration exactly once with checksum checks.
 
 ```powershell
 $env:PYTHONPATH = "backend"
@@ -45,6 +45,48 @@ Inspect `review` for additions, removals, sector changes, and unresolved symbols
 ```
 
 The explicit `publish` command writes securities, dated FMP aliases, source-labeled sectors, an immutable snapshot, and the current pointer in one transaction. If validation or identity resolution fails, the previous catalog remains current. FMP Basic endpoint entitlement, complete share-line coverage, independent membership comparison, and display or redistribution rights still require an authenticated account probe and human review. [FMP pricing and licensing](https://site.financialmodelingprep.com/developer/docs/pricing) does not clear those rights through an API response alone.
+
+## Prepare a live Alpaca collection universe
+
+FMP's `UNVERIFIED` exchange aliases are insufficient for price collection. Alpaca's [asset list](https://docs.alpaca.markets/us/reference/get-v2-assets-1) supplies current asset IDs, symbols, exchange, class, and status; its [trading calendar](https://docs.alpaca.markets/us/reference/legacycalendar) supplies session dates and regular open/close times. Neither proves a ticker's five-year history or that an FMP share line matches an Alpaca asset. The operator must review those claims using dated evidence before a collection plan is usable.
+
+For a published FMP snapshot, use the paper credentials in local environment variables and choose the full requested window. The preparation fetches the preceding trading session too, to supply the comparison close. `probe` and `stage` make one bounded asset request and one bounded calendar request. They do not change current membership or start collection.
+
+```powershell
+python -m market_eagle.ingestion.alpaca_collect probe --start 2021-01-01 --end 2025-12-31
+python -m market_eagle.ingestion.alpaca_collect stage --snapshot-id FMP_SNAPSHOT_ID --start 2021-01-01 --end 2025-12-31
+python -m market_eagle.ingestion.alpaca_collect review PREPARATION_ID
+python -m market_eagle.ingestion.alpaca_collect draft PREPARATION_ID --output C:/private/alpaca-approval.json
+```
+
+The draft suggests exact symbol matches only. It leaves `verified_from` and `evidence` blank. Review every FMP stock ID against the Alpaca asset ID and exchange, including separate share classes; fill one approval entry per stock. Each approved alias must cover the comparison session through the requested end date. A ticker difference needs a written reason. Current asset metadata cannot certify historical alias coverage; stocks with unresolved renames or uncertain share-line identity must remain held until that evidence is available. An approval file has this shape:
+
+```json
+{
+  "preparation_id": "PREPARATION_ID",
+  "checksum": "CHECKSUM_FROM_REVIEW",
+  "reviewer": "reviewer name",
+  "review_note": "Reviewed the asset list, share lines, alias dates, and market calendar",
+  "aliases": [{
+    "stock_id": "STABLE_STOCK_ID",
+    "asset_id": "ALPACA_ASSET_UUID",
+    "symbol": "PROVIDER_SYMBOL",
+    "exchange": "NYSE",
+    "verified_from": "2020-12-31",
+    "verified_to": null,
+    "evidence": "dated source or checked provider history for this share line"
+  }]
+}
+```
+
+`approve` rejects partial membership, duplicate assets or symbols, OTC/unknown exchanges, aliases that do not span the window, and a catalog that changed after staging. It atomically registers reviewed Alpaca aliases, `US_EQUITY` sessions and their source, and the `alpaca/sip` data source with rights explicitly unconfirmed. It returns a pinned workflow request. `request` reprints that request later; it does not start Temporal.
+
+```powershell
+python -m market_eagle.ingestion.alpaca_collect approve C:/private/alpaca-approval.json
+python -m market_eagle.ingestion.alpaca_collect request PREPARATION_ID
+```
+
+The worker requires the approved preparation ID and checks every five-stock group before contacting Alpaca. Stock aliases keep their reviewed NYSE/NASDAQ/etc. exchange; daily bars use the separate `US_EQUITY` trading calendar. A comparison close or session missing from the approved calendar prevents preparation. This is a private collection path, not clearance for redistributed prices or a trusted live return basis.
 
 The lead's 2026-10-08 read-only paper-account probe confirmed five-year raw SIP daily bars for five symbols (1,257 each, one page), a current-day historical `1Day` bar, and a `delayed_sip` snapshot `dailyBar`. `SessionRefreshWorkflow` uses the observed current-day historical `1Day` path with a 15-minute cutoff, marks its observations provisional, and reports returned count. It does not mix the `delayed_sip` snapshot feed into SIP history. Account rights for wider display or redistribution and the final scheduling/rate policy remain unresolved.
 

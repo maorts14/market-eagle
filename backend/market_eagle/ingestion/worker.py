@@ -19,6 +19,7 @@ from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
 from .alpaca import AlpacaRequestError, historical_pages, page_rows
+from .alpaca_preparation import validate_collection_group
 from .fmp import FmpRequestError, fetch_constituents
 from .fmp_stage import stage_constituents
 from .store import ingest_page, missing_pairs, publish_catalog, read_csv
@@ -129,23 +130,11 @@ def collect_group(request: dict) -> dict:
             "collection group must contain one to five stocks", non_retryable=True
         )
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT m.stock_id, s.ticker FROM universe_member m JOIN security_symbol s "
-                "ON s.stock_id = m.stock_id AND s.source = 'alpaca' AND s.exchange = %s "
-                "AND s.valid_from <= %s AND (s.valid_to IS NULL OR s.valid_to >= %s) "
-                "WHERE m.snapshot_id = %s AND m.stock_id = ANY(%s)",
-                (request["exchange"], start, end, request["snapshot_id"], stock_ids),
-            )
-            mappings = cur.fetchall()
+        try:
+            mappings = validate_collection_group(conn, request)
+        except ValueError as exc:
+            raise ApplicationError(str(exc), non_retryable=True) from exc
         conn.commit()  # End the alias read so each following page has its own transaction.
-        if len(mappings) != len(stock_ids) or len(
-            {item[1] for item in mappings}
-        ) != len(stock_ids):
-            raise ApplicationError(
-                "stock IDs need verified Alpaca aliases covering the entire request window",
-                non_retryable=True,
-            )
         symbols = [item[1] for item in mappings]
         accepted = inserted = rejected = pages = 0
         returned = set()
@@ -171,6 +160,7 @@ def collect_group(request: dict) -> dict:
                     feed=request["feed"],
                     adjustment=request["price_basis"],
                     end_at=end_at,
+                    asof=date.fromisoformat(request["symbol_asof"]),
                     before_request=_pace_provider,
                 ):
                     last_observed_at = observed_at
@@ -230,6 +220,10 @@ def collect_group(request: dict) -> dict:
 def check_coverage(request: dict) -> dict:
     start, end = _request_dates(request)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        try:
+            validate_collection_group(conn, request)
+        except ValueError as exc:
+            raise ApplicationError(str(exc), non_retryable=True) from exc
         return missing_pairs(
             conn,
             request["snapshot_id"],

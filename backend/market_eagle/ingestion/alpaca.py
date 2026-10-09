@@ -27,6 +27,7 @@ def historical_pages(
     adjustment: str,
     max_pages: int = 20,
     end_at: datetime | None = None,
+    asof: date | None = None,
     before_request: Callable[[], None] | None = None,
 ) -> Iterator[tuple[dict, datetime]]:
     """Read up to five symbols with 10,000 bars/page and follow every token."""
@@ -50,6 +51,8 @@ def historical_pages(
         "adjustment": adjustment,
         "sort": "asc",
     }
+    if asof is not None:
+        params["asof"] = asof.isoformat()
     headers = {"APCA-API-KEY-ID": key_id, "APCA-API-SECRET-KEY": secret_key}
     seen_tokens: set[str] = set()
     for _ in range(max_pages):
