@@ -16,7 +16,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from market_eagle.agent.activities import AgentActivities
 from market_eagle.agent.api import public_turn, reconcile_turn
-from market_eagle.agent.models import Decision, Limits, previous_completed_month
+from market_eagle.agent.models import (
+    Decision,
+    Limits,
+    previous_completed_month,
+    validate_request,
+)
 from market_eagle.agent.store import AgentStore, BusyConversation
 from market_eagle.agent.workflow import AgentTurnWorkflow
 from market_eagle.analytics.fixture_repository import SyntheticFixtureRepository
@@ -166,6 +171,28 @@ def test_validation_rejects_sql_and_excessive_window_without_running_tool(setup)
     oversized = valid | {"request": valid["request"] | {"limit": 100}}
     assert activities.execute(turn["id"], oversized)["kind"] == "rejected"
     assert store.turn(turn["id"])["evidence_id"] is None
+
+
+def test_default_limit_accepts_full_five_year_window_and_rejects_one_more_day():
+    request = gain_volume_decision(date(2026, 1, 8)).request
+    assert request is not None
+    five_years = request.model_copy(
+        update={
+            "window": request.window.model_copy(
+                update={"start": date(2020, 1, 1), "end": date(2024, 12, 31)}
+            )
+        }
+    )
+    assert (five_years.window.end - five_years.window.start).days + 1 == 1827
+    validate_request(five_years, Limits())
+
+    too_long = five_years.model_copy(
+        update={
+            "window": five_years.window.model_copy(update={"end": date(2025, 1, 1)})
+        }
+    )
+    with pytest.raises(ValueError, match="requested window exceeds"):
+        validate_request(too_long, Limits())
 
 
 def test_idempotency_busy_cancel_and_follow_up_context(setup):
