@@ -19,6 +19,8 @@ from temporalio.exceptions import ApplicationError
 from temporalio.worker import Worker
 
 from .alpaca import AlpacaRequestError, historical_pages, page_rows
+from .fmp import FmpRequestError, fetch_constituents
+from .fmp_stage import stage_constituents
 from .store import ingest_page, missing_pairs, publish_catalog, read_csv
 from .workflows import (
     CatalogPublishWorkflow,
@@ -70,11 +72,29 @@ def _retry_delay(value: str | None) -> timedelta | None:
 
 @activity.defn(name="publish_catalog_snapshot")
 def publish_catalog_snapshot(request: dict) -> dict:
+    if request["source"] == "fmp-sp500":
+        key = os.environ.get("FMP_API_KEY")
+        if not key:
+            raise ApplicationError(
+                "FMP_API_KEY is required for catalog staging", non_retryable=True
+            )
+        try:
+            with httpx.Client() as client:
+                fetched = fetch_constituents(client, key)
+        except FmpRequestError as exc:
+            raise ApplicationError(
+                str(exc),
+                non_retryable=exc.status_code in (400, 401, 402, 403),
+                next_retry_delay=_retry_delay(exc.retry_after)
+                if exc.status_code == 429
+                else None,
+            ) from exc
+        except (TypeError, ValueError) as exc:
+            raise ApplicationError(str(exc), non_retryable=True) from exc
+        with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+            return stage_constituents(conn, fetched)
     if request["source"] != "synthetic-v1":
-        raise ApplicationError(
-            "live catalog publication needs a validated provider and review policy",
-            non_retryable=True,
-        )
+        raise ApplicationError("unsupported catalog source", non_retryable=True)
     fixture_dir = Path(__file__).resolve().parents[3] / "fixtures" / "synthetic-v1"
     rows = read_csv(fixture_dir / "catalog.csv")
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:

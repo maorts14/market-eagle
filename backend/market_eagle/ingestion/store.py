@@ -96,6 +96,9 @@ def publish_catalog(
     checksum = hashlib.sha256(canonical.encode()).hexdigest()
     with conn.transaction(), conn.cursor() as cur:
         cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('market-eagle-catalog-publication'))"
+        )
+        cur.execute(
             "SELECT source_checksum FROM universe_snapshot WHERE snapshot_id = %s",
             (snapshot_id,),
         )
