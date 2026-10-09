@@ -254,7 +254,12 @@ def backend_checks(*, integration: bool) -> None:
 
 def serve_api() -> None:
     environment = os.environ.copy()
-    for key in ("OPENAI_API_KEY", "ALPACA_API_KEY_ID", "ALPACA_API_SECRET_KEY"):
+    for key in (
+        "OPENROUTER_API_KEY",
+        "OPENAI_API_KEY",
+        "ALPACA_API_KEY_ID",
+        "ALPACA_API_SECRET_KEY",
+    ):
         environment.pop(key, None)
     environment["DATABASE_URL"] = readonly_database_url()
     environment["MARKET_EAGLE_SOURCE"] = "synthetic-v1"
@@ -293,7 +298,7 @@ def serve_agent_worker() -> None:
     environment["MARKET_EAGLE_EXCHANGE"] = "SYNTHETIC"
     environment["AGENT_STORE_PATH"] = str(ROOT / "local-data" / "agent.sqlite")
     environment["TEMPORAL_ADDRESS"] = "localhost:7233"
-    for key in ("OPENAI_API_KEY", "OPENAI_MODEL"):
+    for key in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL"):
         if values.get(key):
             environment[key] = values[key]
     environment["PYTHONPATH"] = (

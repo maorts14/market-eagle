@@ -10,8 +10,8 @@ from temporalio.client import Client
 
 from market_eagle.analytics.postgres_repository import PostgresAnalyticsRepository
 
-from .activities import OpenAIResearchModel
 from .models import Limits
+from .openrouter import OpenRouterResearchModel
 from .store import AgentStore
 from .worker import run_worker
 
@@ -24,8 +24,8 @@ async def main() -> None:
         "MARKET_EAGLE_PRICE_BASIS",
         "MARKET_EAGLE_EXCHANGE",
         "AGENT_STORE_PATH",
-        "OPENAI_API_KEY",
-        "OPENAI_MODEL",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_MODEL",
     )
     missing = [name for name in required if not os.environ.get(name)]
     if missing:
@@ -45,7 +45,10 @@ async def main() -> None:
         temporal,
         AgentStore(Path(os.environ["AGENT_STORE_PATH"])),
         repository,
-        OpenAIResearchModel(os.environ["OPENAI_MODEL"]),
+        OpenRouterResearchModel(
+            api_key=os.environ["OPENROUTER_API_KEY"],
+            model=os.environ["OPENROUTER_MODEL"],
+        ),
         Limits(),
     )
 
