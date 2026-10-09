@@ -49,6 +49,7 @@ export type AgentTurn = {
   error: string | null
 }
 export type AgentConversation = { conversation_id: string; active_turn_id: string | null; turns: AgentTurn[] }
+export type AgentConversationSummary = { conversation_id: string; title: string; active_turn_id: string | null; updated_at: string }
 
 export class AgentApiError extends Error {
   readonly status: number
@@ -80,7 +81,7 @@ async function request<T>(path: string, method = 'GET', body?: object): Promise<
 }
 
 type FixtureTurn = AgentTurn & { request_id: string; ready_at: number }
-type FixtureConversation = { turns: FixtureTurn[] }
+type FixtureConversation = { turns: FixtureTurn[]; updated_at?: string }
 type FixtureStore = Record<string, FixtureConversation>
 const fixtureKey = 'market-eagle-agent-fixture-v1'
 
@@ -147,6 +148,8 @@ async function settleFixture(store: FixtureStore, turn: FixtureTurn): Promise<vo
   if (Date.now() < turn.ready_at) return
   if (turn.status === 'cancel_requested') turn.status = 'cancelled'
   else if (turn.status === 'running') await completeFixture(turn)
+  else return
+  store[turn.conversation_id].updated_at = new Date().toISOString()
   saveFixture(store)
 }
 
@@ -160,6 +163,21 @@ function findFixtureTurn(store: FixtureStore, turnId: string): FixtureTurn {
 
 export function createAgentAdapter(mode: 'api' | 'fixture') {
   return {
+  async listConversations(): Promise<AgentConversationSummary[]> {
+    if (mode === 'api') {
+      const response = await request<{ conversations: AgentConversationSummary[] }>('/conversations')
+      return response.conversations
+    }
+    const store = readFixture()
+    const conversations = Object.entries(store).map(([conversation_id, conversation]) => ({
+      conversation_id,
+      title: conversation.turns[0]?.question.slice(0, 48) ?? 'New conversation',
+      active_turn_id: conversation.turns.find((turn) => turn.status === 'running' || turn.status === 'cancel_requested')?.turn_id ?? null,
+      updated_at: conversation.updated_at ?? new Date(0).toISOString(),
+    }))
+    return conversations.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  },
+
   async createConversation(): Promise<string> {
     if (mode === 'api') {
       const response = await request<{ conversation_id: string }>('/conversations', 'POST')
@@ -167,7 +185,7 @@ export function createAgentAdapter(mode: 'api' | 'fixture') {
     }
     const id = crypto.randomUUID()
     const store = readFixture()
-    store[id] = { turns: [] }
+    store[id] = { turns: [], updated_at: new Date().toISOString() }
     saveFixture(store)
     return id
   },
@@ -202,6 +220,7 @@ export function createAgentAdapter(mode: 'api' | 'fixture') {
       evidence_id: null, agent_explanation: null, error: null,
     }
     conversation.turns.push(turn)
+    conversation.updated_at = new Date().toISOString()
     saveFixture(store)
     return turn
   },
@@ -221,6 +240,7 @@ export function createAgentAdapter(mode: 'api' | 'fixture') {
     if (turn.status === 'running') {
       turn.status = 'cancel_requested'
       turn.ready_at = Date.now() + 400
+      store[turn.conversation_id].updated_at = new Date().toISOString()
       saveFixture(store)
     }
     return turn

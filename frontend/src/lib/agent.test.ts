@@ -20,6 +20,20 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks() })
 
 describe('local agent fixture', () => {
+  it('lists conversations for a new adapter and reflects titles, active turns, and deletion', async () => {
+    const first = await agent.createConversation()
+    const second = await agent.createConversation()
+    const started = await agent.submitTurn(first, exampleQuestion, 'first-request')
+    const anotherView = createAgentAdapter('fixture')
+
+    expect(await anotherView.listConversations()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ conversation_id: first, title: exampleQuestion.slice(0, 48), active_turn_id: started.turn_id }),
+      expect.objectContaining({ conversation_id: second, title: 'New conversation', active_turn_id: null }),
+    ]))
+    await anotherView.deleteConversation(first)
+    expect((await agent.listConversations()).map((item) => item.conversation_id)).toEqual([second])
+  })
+
   it('keeps a stable request ID and returns sourced synthetic facts for a follow-up', async () => {
     const conversationId = await agent.createConversation()
     const started = await agent.submitTurn(conversationId, exampleQuestion, 'request-1')
@@ -67,6 +81,7 @@ describe('agent HTTP adapter', () => {
     const turn = { turn_id: 'turn-1', conversation_id: 'conversation-1', question: 'Question', status: 'running', decision: null, trusted_result: null, evidence_id: null, agent_explanation: null, error: null }
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ conversation_id: 'conversation-1' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ conversations: [{ conversation_id: 'conversation-1', title: 'Question', active_turn_id: null, updated_at: '2026-10-09T00:00:00Z' }] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => turn })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ ...turn, status: 'cancel_requested' }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ ...turn, status: 'cancelled' }) })
@@ -76,6 +91,7 @@ describe('agent HTTP adapter', () => {
     const api = createAgentAdapter('api')
 
     expect(await api.createConversation()).toBe('conversation-1')
+    expect(await api.listConversations()).toEqual([{ conversation_id: 'conversation-1', title: 'Question', active_turn_id: null, updated_at: '2026-10-09T00:00:00Z' }])
     expect((await api.submitTurn('conversation-1', 'Question', 'stable-id')).status).toBe('running')
     expect((await api.cancelTurn('turn-1')).status).toBe('cancel_requested')
     expect((await api.getTurn('turn-1')).status).toBe('cancelled')
@@ -84,13 +100,14 @@ describe('agent HTTP adapter', () => {
 
     expect(fetchMock.mock.calls.map(([url, options]) => [url, options.method])).toEqual([
       ['/api/v1/agent/conversations', 'POST'],
+      ['/api/v1/agent/conversations', 'GET'],
       ['/api/v1/agent/conversations/conversation-1/turns', 'POST'],
       ['/api/v1/agent/turns/turn-1/cancel', 'POST'],
       ['/api/v1/agent/turns/turn-1', 'GET'],
       ['/api/v1/agent/conversations/conversation-1', 'GET'],
       ['/api/v1/agent/conversations/conversation-1', 'DELETE'],
     ])
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ request_id: 'stable-id', question: 'Question' })
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ request_id: 'stable-id', question: 'Question' })
   })
 
   it('exposes FastAPI busy and connection errors to the UI', async () => {

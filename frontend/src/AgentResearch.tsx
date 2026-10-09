@@ -1,25 +1,15 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ArrowUp, ChevronDown, CircleStop, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import {
   agent, agentMode, AgentApiError, exampleQuestion, followUpQuestion,
-  type AgentConversation, type AgentRow, type AgentTurn, type TrustedResult,
+  type AgentConversation, type AgentConversationSummary, type AgentRow, type AgentTurn, type TrustedResult,
 } from '@/lib/agent'
 import './AgentResearch.css'
 
-type SavedConversation = { id: string; title: string }
-const savedKey = `market-eagle-agent-conversations-v1-${agentMode}`
 const activeStatuses = new Set(['running', 'cancel_requested'])
-
-function readSaved(): SavedConversation[] {
-  return JSON.parse(localStorage.getItem(savedKey) ?? '[]') as SavedConversation[]
-}
-
-function saveConversations(items: SavedConversation[]) {
-  localStorage.setItem(savedKey, JSON.stringify(items))
-}
 
 function percent(value: number | string | null | undefined, signed = false) {
   if (value == null) return '—'
@@ -102,11 +92,12 @@ export function TurnCard({ turn }: { turn: AgentTurn }) {
 }
 
 export default function AgentResearch() {
-  const [saved, setSaved] = useState<SavedConversation[]>(readSaved)
-  const [selectedId, setSelectedId] = useState(() => readSaved()[0]?.id ?? '')
+  const [conversations, setConversations] = useState<AgentConversationSummary[]>([])
+  const [selectedId, setSelectedId] = useState('')
   const [turns, setTurns] = useState<AgentTurn[]>([])
   const [draft, setDraft] = useState('')
-  const [loading, setLoading] = useState(() => Boolean(readSaved()[0]?.id))
+  const [listing, setListing] = useState(true)
+  const [loadedId, setLoadedId] = useState('')
   const [acting, setActing] = useState(false)
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -114,7 +105,31 @@ export default function AgentResearch() {
   const [reloadKey, setReloadKey] = useState(0)
   const requestRef = useRef<{ question: string; id: string } | null>(null)
   const conversationRef = useRef<HTMLDivElement>(null)
-  const activeTurn = turns.find((turn) => activeStatuses.has(turn.status))
+  const activeTurn = turns.find((turn) => turn.conversation_id === selectedId && activeStatuses.has(turn.status))
+  const loading = Boolean(selectedId && loadedId !== selectedId)
+
+  const applyConversations = useCallback((listed: AgentConversationSummary[], preferredId?: string) => {
+    setConversations(listed)
+    setSelectedId((current) => {
+      if (preferredId && listed.some((item) => item.conversation_id === preferredId)) return preferredId
+      if (listed.some((item) => item.conversation_id === current)) return current
+      return listed[0]?.conversation_id ?? ''
+    })
+  }, [])
+
+  const refreshConversations = useCallback(async (preferredId?: string) => {
+    setListing(true)
+    try { applyConversations(await agent.listConversations(), preferredId) }
+    finally { setListing(false) }
+  }, [applyConversations])
+
+  useEffect(() => {
+    let live = true
+    agent.listConversations().then((listed) => { if (live) applyConversations(listed) })
+      .catch((reason: Error) => { if (live) setError(`Could not list conversations: ${reason.message}`) })
+      .finally(() => { if (live) setListing(false) })
+    return () => { live = false }
+  }, [applyConversations])
 
   useEffect(() => {
     const panel = conversationRef.current
@@ -130,7 +145,7 @@ export default function AgentResearch() {
       setError('')
       setSyncStopped(false)
     }).catch((reason: Error) => { if (live) setError(`Could not load this conversation: ${reason.message}`) })
-      .finally(() => { if (live) setLoading(false) })
+      .finally(() => { if (live) setLoadedId(selectedId) })
     return () => { live = false }
   }, [selectedId, reloadKey])
 
@@ -156,14 +171,11 @@ export default function AgentResearch() {
     setError('')
     try {
       const id = await agent.createConversation()
-      const next = [{ id, title: 'New conversation' }, ...saved]
-      saveConversations(next)
-      setSaved(next)
       setTurns([])
-      setLoading(true)
-      setSelectedId(id)
       setDraft('')
       setConfirmDelete(false)
+      try { await refreshConversations(id) }
+      catch (reason) { setError(`Conversation created, but the list could not refresh: ${reason instanceof Error ? reason.message : 'Unknown error.'}`) }
     } catch (reason) { setError(`Could not create a conversation: ${reason instanceof Error ? reason.message : 'Unknown error.'}`) }
     finally { setActing(false) }
   }
@@ -179,15 +191,13 @@ export default function AgentResearch() {
     try {
       const turn = await agent.submitTurn(selectedId, question, requestId)
       setTurns((current) => current.some((item) => item.turn_id === turn.turn_id) ? current : [...current, turn])
-      const next = saved.map((item) => item.id === selectedId && item.title === 'New conversation'
-        ? { ...item, title: question.slice(0, 48) } : item)
-      saveConversations(next)
-      setSaved(next)
       setDraft('')
       requestRef.current = null
+      try { await refreshConversations(selectedId) }
+      catch (reason) { setError(`Question saved, but the conversation list could not refresh: ${reason instanceof Error ? reason.message : 'Unknown error.'}`) }
     } catch (reason) {
       setError(`Question was not accepted: ${reason instanceof Error ? reason.message : 'Unknown error.'} Retry will use the same request ID.`)
-      if (reason instanceof AgentApiError && reason.status === 409) setReloadKey((key) => key + 1)
+      if (reason instanceof AgentApiError && reason.status === 409) { setLoadedId(''); setReloadKey((key) => key + 1) }
     } finally { setActing(false) }
   }
 
@@ -208,13 +218,13 @@ export default function AgentResearch() {
     setError('')
     try {
       await agent.deleteConversation(selectedId)
-      const next = saved.filter((item) => item.id !== selectedId)
-      saveConversations(next)
-      setSaved(next)
-      setSelectedId(next[0]?.id ?? '')
-      setLoading(Boolean(next[0]?.id))
+      const next = conversations.filter((item) => item.conversation_id !== selectedId)
+      setConversations(next)
+      setSelectedId(next[0]?.conversation_id ?? '')
       setTurns([])
       setConfirmDelete(false)
+      try { await refreshConversations() }
+      catch (reason) { setError(`Conversation deleted, but the list could not refresh: ${reason instanceof Error ? reason.message : 'Unknown error.'}`) }
     } catch (reason) { setError(`Could not delete this conversation: ${reason instanceof Error ? reason.message : 'Unknown error.'}`) }
     finally { setActing(false) }
   }
@@ -223,12 +233,22 @@ export default function AgentResearch() {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') event.currentTarget.form?.requestSubmit()
   }
 
+  async function reconnect() {
+    setError('')
+    try {
+      await refreshConversations()
+      setSyncStopped(false)
+      setLoadedId('')
+      setReloadKey((key) => key + 1)
+    } catch (reason) { setError(`Could not refresh conversations: ${reason instanceof Error ? reason.message : 'Unknown error.'}`) }
+  }
+
   return <section className="agent-section" aria-labelledby="agent-heading">
     <div className="agent-header"><div><h2 id="agent-heading">Research conversation</h2><p>Research questions over retained market observations.</p></div><Badge variant="outline" className="agent-mode">{agentMode === 'fixture' ? 'SYNTHETIC AGENT DEMO' : 'AGENT API'}</Badge></div>
-    <div className="agent-toolbar"><label htmlFor="conversation-select">Conversation</label><select id="conversation-select" value={selectedId} onChange={(event) => { setTurns([]); setLoading(true); setSelectedId(event.target.value); setConfirmDelete(false); setDraft('') }} disabled={!saved.length || acting}>{saved.length ? saved.map((item) => <option key={item.id} value={item.id}>{item.title}</option>) : <option value="">No conversation yet</option>}</select><Button type="button" variant="outline" size="sm" disabled={acting} onClick={createConversation}><Plus size={15} aria-hidden="true" />New</Button>{selectedId && <Button type="button" variant="ghost" size="sm" className="agent-delete" disabled={acting} onClick={() => setConfirmDelete(true)}><Trash2 size={15} aria-hidden="true" />Delete</Button>}<span>Recent on this device</span></div>
-    {confirmDelete && <div className="agent-delete-confirm" role="group" aria-label="Confirm conversation deletion"><p><strong>Delete this conversation permanently?</strong> Its turns and evidence cannot be recovered. The initial deployment has no backup.</p><div><Button type="button" size="sm" variant="destructive" disabled={acting} onClick={removeConversation}>Delete permanently</Button><Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>Keep conversation</Button></div></div>}
-    {error && <div className="agent-error" role="alert"><p>{error}</p>{selectedId && <Button type="button" size="sm" variant="outline" onClick={() => { setSyncStopped(false); setReloadKey((key) => key + 1) }}><RotateCcw size={14} aria-hidden="true" />Reconnect</Button>}</div>}
-    <div className="agent-conversation" ref={conversationRef} aria-live="polite">{loading ? <p className="agent-empty">Loading conversation…</p> : turns.length ? turns.map((turn) => <TurnCard turn={turn} key={turn.turn_id} />) : <div className="agent-empty"><strong>{selectedId ? 'Start with a research question' : 'Start a conversation'}</strong><p>{selectedId ? 'Questions and follow-ups in this conversation share context.' : 'Create a conversation to ask the research agent. New conversations start fresh.'}</p></div>}</div>
+    <div className="agent-toolbar"><label htmlFor="conversation-select">Conversation</label><select id="conversation-select" value={selectedId} onChange={(event) => { setTurns([]); setSelectedId(event.target.value); setConfirmDelete(false); setDraft('') }} disabled={listing || !conversations.length || acting}>{conversations.length ? conversations.map((item) => <option key={item.conversation_id} value={item.conversation_id}>{item.title}</option>) : <option value="">No conversation yet</option>}</select><Button type="button" variant="outline" size="sm" disabled={listing || acting} onClick={createConversation}><Plus size={15} aria-hidden="true" />New</Button><Button type="button" variant="ghost" size="sm" disabled={listing || acting} onClick={reconnect}><RotateCcw size={15} aria-hidden="true" />Refresh</Button>{selectedId && <Button type="button" variant="ghost" size="sm" className="agent-delete" disabled={listing || acting} onClick={() => setConfirmDelete(true)}><Trash2 size={15} aria-hidden="true" />Delete</Button>}<span>{agentMode === 'fixture' ? 'Local fixture conversations' : 'All conversations'}</span></div>
+    {confirmDelete && <div className="agent-delete-confirm" role="group" aria-label="Confirm conversation deletion"><p><strong>Delete this conversation permanently?</strong> {agentMode === 'api' ? 'It will disappear for every visitor. ' : ''}Its turns and evidence cannot be recovered. The initial deployment has no backup.</p><div><Button type="button" size="sm" variant="destructive" disabled={acting} onClick={removeConversation}>Delete permanently</Button><Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>Keep conversation</Button></div></div>}
+    {error && <div className="agent-error" role="alert"><p>{error}</p><Button type="button" size="sm" variant="outline" onClick={reconnect}><RotateCcw size={14} aria-hidden="true" />Reconnect</Button></div>}
+    <div className="agent-conversation" ref={conversationRef} aria-live="polite">{listing && !selectedId ? <p className="agent-empty">Loading conversations…</p> : loading ? <p className="agent-empty">Loading conversation…</p> : turns.some((turn) => turn.conversation_id === selectedId) ? turns.filter((turn) => turn.conversation_id === selectedId).map((turn) => <TurnCard turn={turn} key={turn.turn_id} />) : <div className="agent-empty"><strong>{selectedId ? 'Start with a research question' : 'Start a conversation'}</strong><p>{selectedId ? 'Questions and follow-ups in this conversation share context.' : 'Create a conversation to ask the research agent. New conversations start fresh.'}</p></div>}</div>
     {activeTurn && <div className="agent-active-actions"><span>{activeTurn.status === 'cancel_requested' ? 'Cancellation requested' : 'One turn is active in this conversation'}</span><Button type="button" size="sm" variant="outline" disabled={acting || activeTurn.status === 'cancel_requested'} onClick={cancel}><CircleStop size={15} aria-hidden="true" />Cancel turn</Button></div>}
     <form className="agent-composer" onSubmit={submit}><label htmlFor="agent-question">{turns.length ? 'Follow-up question' : 'Research question'}</label><div><Textarea id="agent-question" value={draft} onChange={(event) => { setDraft(event.target.value); if (requestRef.current?.question !== event.target.value.trim()) requestRef.current = null }} onKeyDown={handleKeyDown} maxLength={4000} rows={2} placeholder={agentMode === 'fixture' ? 'Use the documented sample question below' : 'Ask about returns, breadth, volume, or coverage'} disabled={!selectedId || Boolean(activeTurn) || acting} /><Button type="submit" disabled={!selectedId || !draft.trim() || Boolean(activeTurn) || acting}><ArrowUp size={16} aria-hidden="true" />Ask</Button></div><div className="agent-composer-foot"><span>{agentMode === 'fixture' ? 'Local fixture: example and one follow-up only. No model is called.' : 'Answers use validated, read-only calculations.'}</span><span>{draft.length} / 4000 · Ctrl+Enter to send</span></div></form>
     <div className="agent-suggestions"><span>Try</span><button type="button" disabled={!selectedId || Boolean(activeTurn)} onClick={() => setDraft(exampleQuestion)}>Gain + dollar volume last month</button>{turns.some((turn) => turn.status === 'completed') && <button type="button" disabled={!selectedId || Boolean(activeTurn)} onClick={() => setDraft(followUpQuestion)}>Ask a follow-up</button>}</div>
