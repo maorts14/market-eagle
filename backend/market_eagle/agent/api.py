@@ -98,6 +98,10 @@ def create_agent_router(
     def create_conversation():
         return {"conversation_id": store.create_conversation()}
 
+    @router.get("/conversations")
+    def list_conversations():
+        return {"conversations": store.list_conversations()}
+
     @router.get("/conversations/{conversation_id}")
     async def conversation(conversation_id: str):
         try:
