@@ -2,6 +2,19 @@
 
 The implementation-facing turn, tool, evidence, and release boundaries are drafted in [agent-harness-contract.md](agent-harness-contract.md).
 
+The first runtime adapter uses OpenRouter's fixed free model
+`nvidia/nemotron-3-super-120b-a12b:free` through Chat Completions. It requests
+strict JSON-schema output for decisions and validates the returned JSON against
+the trusted `Decision` and Analytical Request types before any query executes.
+The worker alone receives `OPENROUTER_API_KEY`; its model slug is explicit in
+ignored local configuration. [OpenRouter lists structured-output support for
+this model](https://openrouter.ai/nvidia/nemotron-3-super-120b-a12b:free), but
+key-backed inference remains an integration gate. Its [free plan lists 50
+requests per day](https://openrouter.ai/pricing), so interpretation, repair,
+explanation, and summary calls share a small daily budget. Free endpoint
+availability can vary, and the model page warns that free endpoint inputs are
+logged; avoid confidential or personal prompts there.
+
 ## Agreed direction
 
 - The first analytical slice covers sector leadership and leading stocks within sectors.

@@ -10,12 +10,26 @@ deterministic verification.
 
 Use `python dev.py integration` to load the fictional fixture and verify the
 API, Temporal, and PostgreSQL path. Start `python dev.py api`; set
-`OPENAI_API_KEY` and `OPENAI_MODEL` in ignored `infra/.env`, then start
+`OPENROUTER_API_KEY` in ignored `infra/.env` and keep `OPENROUTER_MODEL` set to
+`nvidia/nemotron-3-super-120b-a12b:free`, then start
 `python dev.py agent-worker` separately. Both processes use the same SQLite
 file, Temporal namespace, task queue, and limits. Only the worker receives the
-OpenAI key. SQLite writes are
+OpenRouter key. The model slug is fixed so requests cannot silently route to a
+paid or random model. The worker calls OpenRouter's Chat Completions endpoint
+with a strict JSON schema for interpretation and validates the response again
+with `Decision`; it does not use `responses.parse`. Provider routing requires
+support for the requested structured-output parameter. SQLite writes are
 transactional and WAL enabled; a future multi-host deployment should replace
 this agent-owned store with a transactional shared store.
+
+The [selected free model](https://openrouter.ai/nvidia/nemotron-3-super-120b-a12b:free)
+currently lists structured-output support. [OpenRouter's free plan](https://openrouter.ai/pricing)
+lists 50 requests per day; a turn normally uses interpretation and explanation
+calls, with possible repair or summary calls. Availability and supported
+parameters can change, so a live request with the user's key is still required
+before calling the provider integration verified. The selected model's page
+also carries a notice about logging free-endpoint inputs; keep confidential or
+personal data out of those prompts.
 
 `POST /api/v1/agent/conversations` creates a conversation. Submit a turn with
 `POST /api/v1/agent/conversations/{id}/turns` and a stable `request_id` plus
