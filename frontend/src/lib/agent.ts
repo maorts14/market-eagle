@@ -11,6 +11,7 @@ export type AgentRow = {
   name?: string
   sector_code?: string
   period_return?: number | null
+  qualifying_fraction?: number | string | null
   breadth?: number | null
   sector_return?: number | null
   qualifying_days?: number | null
@@ -24,7 +25,7 @@ export type TrustedResult = {
   request_version: number
   metric_version: string
   requested_window: { start: string; end: string }
-  resolved_window: { comparison_session: string; first_session: string; last_session: string }
+  resolved_window: { comparison_session: string | null; first_session: string; last_session: string }
   catalog: { snapshot_id: string; as_of: string; tracked_count: number }
   data: { source: string; feed: string; price_basis: string; as_of: string | null; as_of_kind: 'provider' | 'fetched' | 'mixed' | null; provisional: boolean; synthetic: boolean; return_rankings_trusted: boolean }
   market: { eligible_count: number; excluded_count: number; return: number | null }
@@ -125,6 +126,7 @@ async function completeFixture(turn: FixtureTurn): Promise<void> {
       name: 'Epsilon Fiction',
       sector_code: 'IND',
       period_return: winner.return,
+      qualifying_fraction: winner.qualifying_days / winner.observed_usable_days,
       qualifying_days: winner.qualifying_days,
       observed_usable_days: winner.observed_usable_days,
       requested_sessions: winner.requested_sessions,

@@ -21,9 +21,10 @@ function saveConversations(items: SavedConversation[]) {
   localStorage.setItem(savedKey, JSON.stringify(items))
 }
 
-function percent(value: number | null | undefined, signed = false) {
+function percent(value: number | string | null | undefined, signed = false) {
   if (value == null) return '—'
-  return `${signed && value > 0 ? '+' : ''}${(value * 100).toFixed(1)}%`
+  const numeric = Number(value)
+  return `${signed && numeric > 0 ? '+' : ''}${(numeric * 100).toFixed(1)}%`
 }
 
 function shortDate(value: string) {
@@ -41,6 +42,7 @@ function rowTitle(row: AgentRow) {
 
 function resultMetric(row: AgentRow) {
   if (row.period_return != null) return { label: 'Period return', value: percent(row.period_return, true) }
+  if (row.qualifying_fraction != null) return { label: 'Qualifying days', value: percent(row.qualifying_fraction) }
   if (row.breadth != null) return { label: 'Sector breadth', value: percent(row.breadth) }
   return { label: 'Sector return', value: percent(row.sector_return, true) }
 }
@@ -52,7 +54,7 @@ function Evidence({ result }: { result: TrustedResult }) {
       <dl className="agent-evidence-grid">
         <div><dt>Requested dates</dt><dd>{shortDate(result.requested_window.start)} – {shortDate(result.requested_window.end)}</dd></div>
         <div><dt>Resolved sessions</dt><dd>{shortDate(result.resolved_window.first_session)} – {shortDate(result.resolved_window.last_session)}</dd></div>
-        <div><dt>Comparison close</dt><dd>{shortDate(result.resolved_window.comparison_session)}</dd></div>
+        <div><dt>Comparison close</dt><dd>{result.resolved_window.comparison_session ? shortDate(result.resolved_window.comparison_session) : 'None required for frequency-only result'}</dd></div>
         <div><dt>Eligible coverage</dt><dd>{result.eligible_count} of {result.catalog.tracked_count} tracked · {percent(result.eligible_count / result.catalog.tracked_count)}</dd></div>
         <div><dt>Source / feed</dt><dd>{result.data.source} / {result.data.feed}</dd></div>
         <div><dt>Price basis</dt><dd>{result.data.price_basis}</dd></div>
@@ -64,18 +66,19 @@ function Evidence({ result }: { result: TrustedResult }) {
       {result.rows.length > 0 && <div className="agent-evidence-rows"><h4>Returned rows</h4>{result.rows.map((row, index) => <dl className="agent-evidence-row" key={`${rowTitle(row)}-${index}`}>
         <div><dt>Stock / sector</dt><dd>{rowTitle(row)}{row.name ? ` · ${row.name}` : ''}</dd></div>
         {row.period_return != null && <div><dt>Period return</dt><dd>{percent(row.period_return, true)}</dd></div>}
+        {row.qualifying_fraction != null && <div><dt>Qualifying days</dt><dd>{percent(row.qualifying_fraction)}</dd></div>}
         {row.breadth != null && <div><dt>Breadth</dt><dd>{percent(row.breadth)}</dd></div>}
         {row.qualifying_days != null && <div><dt>Qualifying / observed days</dt><dd>{row.qualifying_days} / {row.observed_usable_days}</dd></div>}
         {row.requested_sessions != null && <div><dt>Requested sessions</dt><dd>{row.requested_sessions} · {percent(row.requested_coverage)} observed</dd></div>}
         {row.dollar_volume_formulas?.map((formula) => <div key={formula.input}><dt>Dollar-volume input</dt><dd>{formula.formula}{formula.estimated ? ' · estimate' : ''}</dd></div>)}
       </dl>)}</div>}
       {result.exclusions.length > 0 && <p className="agent-exclusions">Excluded: {result.exclusions.map((item) => `${item.ticker ?? item.stock_id} (${item.reason.replaceAll('_', ' ')})`).join(', ')}.</p>}
-      <p className="agent-policy">{result.data.synthetic ? 'Fictional synthetic history; weekdays are not an exchange calendar.' : 'Selected source and basis are shown above.'}{!result.data.return_rankings_trusted && ' Return rankings remain untrusted until the live price basis is settled.'}</p>
+      <p className="agent-policy">{result.data.synthetic ? 'Fictional synthetic history; weekdays are not an exchange calendar.' : 'Selected source and basis are shown above.'}{!result.data.return_rankings_trusted && result.rows.some((row) => row.period_return != null) && ' Return rankings remain untrusted until the live price basis is settled.'}</p>
     </div>
   </details>
 }
 
-function TurnCard({ turn }: { turn: AgentTurn }) {
+export function TurnCard({ turn }: { turn: AgentTurn }) {
   const result = turn.trusted_result
   const lead = result?.rows[0]
   const metric = lead ? resultMetric(lead) : null
