@@ -1,0 +1,54 @@
+"""Start the research-agent Temporal worker with read-only market access."""
+
+from __future__ import annotations
+
+import asyncio
+import os
+from pathlib import Path
+
+from temporalio.client import Client
+
+from market_eagle.analytics.postgres_repository import PostgresAnalyticsRepository
+
+from .activities import OpenAIResearchModel
+from .models import Limits
+from .store import AgentStore
+from .worker import run_worker
+
+
+async def main() -> None:
+    required = (
+        "DATABASE_URL",
+        "MARKET_EAGLE_SOURCE",
+        "MARKET_EAGLE_FEED",
+        "MARKET_EAGLE_PRICE_BASIS",
+        "MARKET_EAGLE_EXCHANGE",
+        "AGENT_STORE_PATH",
+        "OPENAI_API_KEY",
+        "OPENAI_MODEL",
+    )
+    missing = [name for name in required if not os.environ.get(name)]
+    if missing:
+        raise RuntimeError("Agent worker requires " + ", ".join(missing))
+    repository = PostgresAnalyticsRepository(
+        os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://", 1),
+        source=os.environ["MARKET_EAGLE_SOURCE"],
+        feed=os.environ["MARKET_EAGLE_FEED"],
+        price_basis=os.environ["MARKET_EAGLE_PRICE_BASIS"],
+        exchange=os.environ["MARKET_EAGLE_EXCHANGE"],
+    )
+    temporal = await Client.connect(
+        os.environ.get("TEMPORAL_ADDRESS", "localhost:7233"),
+        namespace=os.environ.get("TEMPORAL_NAMESPACE", "default"),
+    )
+    await run_worker(
+        temporal,
+        AgentStore(Path(os.environ["AGENT_STORE_PATH"])),
+        repository,
+        OpenAIResearchModel(os.environ["OPENAI_MODEL"]),
+        Limits(),
+    )
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

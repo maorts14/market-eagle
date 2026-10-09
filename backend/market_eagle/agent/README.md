@@ -3,18 +3,17 @@
 The agent package binds `AnalyticalRequest` v1 to `AnalyticsService.execute`. The
 model receives a typed decision schema and cannot submit SQL or select a tool
 outside the read-only analytical service. `validate_request` caps the date span
-and output rows; Temporal caps retries and tool calls. The worker process must
-receive an `AnalyticsRepository` whose production adapter uses the read-only
-database role and a database statement timeout. The repository has no such
-production adapter yet; the committed fixture adapter is for verification.
+and output rows; Temporal caps retries and tool calls. The worker uses the
+`PostgresAnalyticsRepository` with the same read-only database role and
+statement timeout as the explorer. The committed fixture adapter remains for
+deterministic verification.
 
-Install `requirements.txt` in the backend environment. Create one shared
-`AgentStore(Path(...))` for the API and worker, on a persistent local volume.
-Create a Temporal `Client` and mount `create_agent_router(store, client, Limits())`
-in the app. Run `run_worker(client, store, repository,
-OpenAIResearchModel(model_name), Limits())` on its own agent task queue. Supply
-the OpenAI key only to the worker process. Configure the worker and API with the
-same SQLite file, Temporal namespace, queue, and limits. SQLite writes are
+Use `python dev.py integration` to load the fictional fixture and verify the
+API, Temporal, and PostgreSQL path. Start `python dev.py api`; set
+`OPENAI_API_KEY` and `OPENAI_MODEL` in ignored `infra/.env`, then start
+`python dev.py agent-worker` separately. Both processes use the same SQLite
+file, Temporal namespace, task queue, and limits. Only the worker receives the
+OpenAI key. SQLite writes are
 transactional and WAL enabled; a future multi-host deployment should replace
 this agent-owned store with a transactional shared store.
 

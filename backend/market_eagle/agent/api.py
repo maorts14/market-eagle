@@ -84,12 +84,15 @@ async def reconcile_turn(
 
 def create_agent_router(
     store: AgentStore,
-    temporal: Client,
+    temporal: Client | Callable[[], Client],
     limits: Limits,
     reference_date: Callable[[], date] = date.today,
     task_queue: str = "market-eagle-agent",
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/agent")
+
+    def client() -> Client:
+        return temporal() if callable(temporal) else temporal
 
     @router.post("/conversations")
     def create_conversation():
@@ -104,7 +107,7 @@ def create_agent_router(
         if current["active_turn_id"]:
             try:
                 await reconcile_turn(
-                    store, temporal, current["active_turn_id"], limits, task_queue
+                    store, client(), current["active_turn_id"], limits, task_queue
                 )
             except (RPCError, OSError) as error:
                 raise HTTPException(503, "Could not reconnect agent turn") from error
@@ -135,7 +138,7 @@ def create_agent_router(
             raise HTTPException(422, str(error)) from None
         if turn["status"] in {"running", "cancel_requested"}:
             try:
-                await reconcile_turn(store, temporal, turn["id"], limits, task_queue)
+                await reconcile_turn(store, client(), turn["id"], limits, task_queue)
             except (RPCError, OSError) as error:
                 raise HTTPException(503, "Could not start agent turn") from error
         return public_turn(store, store.turn(turn["id"]))
@@ -143,7 +146,7 @@ def create_agent_router(
     @router.get("/turns/{turn_id}")
     async def get_turn(turn_id: str):
         try:
-            await reconcile_turn(store, temporal, turn_id, limits, task_queue)
+            await reconcile_turn(store, client(), turn_id, limits, task_queue)
             return public_turn(store, store.turn(turn_id))
         except KeyError:
             raise HTTPException(404, "Turn not found") from None
@@ -169,7 +172,7 @@ def create_agent_router(
         turn = store.turn(turn_id)
         if turn["status"] in {"running", "cancel_requested"}:
             store.request_cancel(turn_id)
-            await reconcile_turn(store, temporal, turn_id, limits, task_queue)
+            await reconcile_turn(store, client(), turn_id, limits, task_queue)
 
     @router.post("/turns/{turn_id}/cancel")
     async def cancel(turn_id: str):

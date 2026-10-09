@@ -1,13 +1,18 @@
-"""Compose the direct explorer API around one selected analytical repository."""
+"""Compose the explorer and optional research-agent API."""
 
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from temporalio.client import Client
 
+from .agent.api import create_agent_router
+from .agent.models import Limits
+from .agent.store import AgentStore
 from .analytics.api import create_explorer_router, install_analytics_errors
 from .analytics.fixture_repository import SyntheticFixtureRepository
 from .analytics.models import AnalyticsRepository
@@ -40,16 +45,52 @@ def selected_repository() -> AnalyticsRepository:
     )
 
 
-def create_app(repository: AnalyticsRepository | None = None) -> FastAPI:
-    app = FastAPI(title="Market Eagle", version="0.1.0")
+def create_app(
+    repository: AnalyticsRepository | None = None,
+    *,
+    agent_store: AgentStore | None = None,
+    temporal: Client | None = None,
+    agent_enabled: bool | None = None,
+) -> FastAPI:
+    enabled = (
+        agent_enabled
+        if agent_enabled is not None
+        else bool(
+            agent_store
+            or temporal
+            or os.environ.get("MARKET_EAGLE_AGENT_ENABLED") == "1"
+        )
+    )
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        if enabled and temporal is None:
+            application.state.temporal = await Client.connect(
+                os.environ.get("TEMPORAL_ADDRESS", "localhost:7233"),
+                namespace=os.environ.get("TEMPORAL_NAMESPACE", "default"),
+            )
+        yield
+
+    app = FastAPI(title="Market Eagle", version="0.1.0", lifespan=lifespan)
+    if temporal is not None:
+        app.state.temporal = temporal
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
     install_analytics_errors(app)
     app.include_router(create_explorer_router(repository or selected_repository()))
+    if enabled:
+        store = agent_store or AgentStore(
+            Path(
+                os.environ.get("AGENT_STORE_PATH", ROOT / "local-data" / "agent.sqlite")
+            )
+        )
+        app.include_router(
+            create_agent_router(store, lambda: app.state.temporal, Limits())
+        )
 
     @app.get("/api/v1/health")
     def health() -> dict[str, str]:
