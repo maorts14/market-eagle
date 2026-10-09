@@ -20,7 +20,8 @@ class Decision(BaseModel):
 class Limits(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    max_window_days: int = Field(default=730, ge=1)
+    # An inclusive five-calendar-year window can contain two leap days.
+    max_window_days: int = Field(default=5 * 365 + 2, ge=1)
     max_rows: int = Field(default=25, ge=1, le=100)
     max_tool_calls: int = Field(default=2, ge=1, le=5)
     max_repair_attempts: int = Field(default=1, ge=0, le=2)
