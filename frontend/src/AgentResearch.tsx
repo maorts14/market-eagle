@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  agent, agentMode, exampleQuestion, followUpQuestion,
+  agent, agentMode, AgentApiError, exampleQuestion, followUpQuestion,
   type AgentConversation, type AgentRow, type AgentTurn, type TrustedResult,
 } from '@/lib/agent'
 import './AgentResearch.css'
@@ -56,7 +56,7 @@ function Evidence({ result }: { result: TrustedResult }) {
         <div><dt>Eligible coverage</dt><dd>{result.eligible_count} of {result.catalog.tracked_count} tracked · {percent(result.eligible_count / result.catalog.tracked_count)}</dd></div>
         <div><dt>Source / feed</dt><dd>{result.data.source} / {result.data.feed}</dd></div>
         <div><dt>Price basis</dt><dd>{result.data.price_basis}</dd></div>
-        <div><dt>Data as of</dt><dd>{asOf(result.data.as_of)}{result.data.provisional ? ' · provisional' : ''}</dd></div>
+        <div><dt>{result.data.as_of_kind === 'fetched' ? 'Collected at' : result.data.as_of_kind === 'mixed' ? 'Earliest source time' : 'Data as of'}</dt><dd>{asOf(result.data.as_of)}{result.data.as_of_kind === 'fetched' ? ' · not provider publication' : result.data.as_of_kind === 'mixed' ? ' · provider and collection times mixed' : ''}{result.data.provisional ? ' · provisional' : ''}</dd></div>
         <div><dt>Current catalog as of</dt><dd>{shortDate(result.catalog.as_of)} · {result.catalog.snapshot_id}</dd></div>
         <div><dt>Calculated at</dt><dd>{asOf(result.calculated_at)}</dd></div>
         <div><dt>Matched candidates</dt><dd>{result.matched_count}</dd></div>
@@ -110,7 +110,13 @@ export default function AgentResearch() {
   const [syncStopped, setSyncStopped] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const requestRef = useRef<{ question: string; id: string } | null>(null)
+  const conversationRef = useRef<HTMLDivElement>(null)
   const activeTurn = turns.find((turn) => activeStatuses.has(turn.status))
+
+  useEffect(() => {
+    const panel = conversationRef.current
+    if (panel) panel.scrollTop = panel.scrollHeight
+  }, [turns.length, selectedId])
 
   useEffect(() => {
     if (!selectedId) return
@@ -150,6 +156,7 @@ export default function AgentResearch() {
       const next = [{ id, title: 'New conversation' }, ...saved]
       saveConversations(next)
       setSaved(next)
+      setTurns([])
       setLoading(true)
       setSelectedId(id)
       setDraft('')
@@ -177,7 +184,7 @@ export default function AgentResearch() {
       requestRef.current = null
     } catch (reason) {
       setError(`Question was not accepted: ${reason instanceof Error ? reason.message : 'Unknown error.'} Retry will use the same request ID.`)
-      if (reason instanceof Error && 'status' in reason && reason.status === 409) setReloadKey((key) => key + 1)
+      if (reason instanceof AgentApiError && reason.status === 409) setReloadKey((key) => key + 1)
     } finally { setActing(false) }
   }
 
@@ -214,11 +221,11 @@ export default function AgentResearch() {
   }
 
   return <section className="agent-section" aria-labelledby="agent-heading">
-    <div className="agent-header"><div><h2 id="agent-heading">Ask Market Eagle</h2><p>Research questions over retained market observations.</p></div><Badge variant="outline" className="agent-mode">{agentMode === 'fixture' ? 'SYNTHETIC AGENT DEMO' : 'AGENT API'}</Badge></div>
+    <div className="agent-header"><div><h2 id="agent-heading">Research conversation</h2><p>Research questions over retained market observations.</p></div><Badge variant="outline" className="agent-mode">{agentMode === 'fixture' ? 'SYNTHETIC AGENT DEMO' : 'AGENT API'}</Badge></div>
     <div className="agent-toolbar"><label htmlFor="conversation-select">Conversation</label><select id="conversation-select" value={selectedId} onChange={(event) => { setTurns([]); setLoading(true); setSelectedId(event.target.value); setConfirmDelete(false); setDraft('') }} disabled={!saved.length || acting}>{saved.length ? saved.map((item) => <option key={item.id} value={item.id}>{item.title}</option>) : <option value="">No conversation yet</option>}</select><Button type="button" variant="outline" size="sm" disabled={acting} onClick={createConversation}><Plus size={15} aria-hidden="true" />New</Button>{selectedId && <Button type="button" variant="ghost" size="sm" className="agent-delete" disabled={acting} onClick={() => setConfirmDelete(true)}><Trash2 size={15} aria-hidden="true" />Delete</Button>}<span>Recent on this device</span></div>
     {confirmDelete && <div className="agent-delete-confirm" role="group" aria-label="Confirm conversation deletion"><p><strong>Delete this conversation permanently?</strong> Its turns and evidence cannot be recovered. The initial deployment has no backup.</p><div><Button type="button" size="sm" variant="destructive" disabled={acting} onClick={removeConversation}>Delete permanently</Button><Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>Keep conversation</Button></div></div>}
     {error && <div className="agent-error" role="alert"><p>{error}</p>{selectedId && <Button type="button" size="sm" variant="outline" onClick={() => { setSyncStopped(false); setReloadKey((key) => key + 1) }}><RotateCcw size={14} aria-hidden="true" />Reconnect</Button>}</div>}
-    <div className="agent-conversation" aria-live="polite">{loading ? <p className="agent-empty">Loading conversation…</p> : turns.length ? turns.map((turn) => <TurnCard turn={turn} key={turn.turn_id} />) : <div className="agent-empty"><strong>{selectedId ? 'Start with a research question' : 'Start a conversation'}</strong><p>{selectedId ? 'Questions and follow-ups in this conversation share context.' : 'Create a conversation to ask the research agent. New conversations start fresh.'}</p></div>}</div>
+    <div className="agent-conversation" ref={conversationRef} aria-live="polite">{loading ? <p className="agent-empty">Loading conversation…</p> : turns.length ? turns.map((turn) => <TurnCard turn={turn} key={turn.turn_id} />) : <div className="agent-empty"><strong>{selectedId ? 'Start with a research question' : 'Start a conversation'}</strong><p>{selectedId ? 'Questions and follow-ups in this conversation share context.' : 'Create a conversation to ask the research agent. New conversations start fresh.'}</p></div>}</div>
     {activeTurn && <div className="agent-active-actions"><span>{activeTurn.status === 'cancel_requested' ? 'Cancellation requested' : 'One turn is active in this conversation'}</span><Button type="button" size="sm" variant="outline" disabled={acting || activeTurn.status === 'cancel_requested'} onClick={cancel}><CircleStop size={15} aria-hidden="true" />Cancel turn</Button></div>}
     <form className="agent-composer" onSubmit={submit}><label htmlFor="agent-question">{turns.length ? 'Follow-up question' : 'Research question'}</label><div><Textarea id="agent-question" value={draft} onChange={(event) => { setDraft(event.target.value); if (requestRef.current?.question !== event.target.value.trim()) requestRef.current = null }} onKeyDown={handleKeyDown} maxLength={4000} rows={2} placeholder={agentMode === 'fixture' ? 'Use the documented sample question below' : 'Ask about returns, breadth, volume, or coverage'} disabled={!selectedId || Boolean(activeTurn) || acting} /><Button type="submit" disabled={!selectedId || !draft.trim() || Boolean(activeTurn) || acting}><ArrowUp size={16} aria-hidden="true" />Ask</Button></div><div className="agent-composer-foot"><span>{agentMode === 'fixture' ? 'Local fixture: example and one follow-up only. No model is called.' : 'Answers use validated, read-only calculations.'}</span><span>{draft.length} / 4000 · Ctrl+Enter to send</span></div></form>
     <div className="agent-suggestions"><span>Try</span><button type="button" disabled={!selectedId || Boolean(activeTurn)} onClick={() => setDraft(exampleQuestion)}>Gain + dollar volume last month</button>{turns.some((turn) => turn.status === 'completed') && <button type="button" disabled={!selectedId || Boolean(activeTurn)} onClick={() => setDraft(followUpQuestion)}>Ask a follow-up</button>}</div>

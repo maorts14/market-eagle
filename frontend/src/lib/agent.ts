@@ -26,7 +26,7 @@ export type TrustedResult = {
   requested_window: { start: string; end: string }
   resolved_window: { comparison_session: string; first_session: string; last_session: string }
   catalog: { snapshot_id: string; as_of: string; tracked_count: number }
-  data: { source: string; feed: string; price_basis: string; as_of: string | null; provisional: boolean; synthetic: boolean; return_rankings_trusted: boolean }
+  data: { source: string; feed: string; price_basis: string; as_of: string | null; as_of_kind: 'provider' | 'fetched' | 'mixed' | null; provisional: boolean; synthetic: boolean; return_rankings_trusted: boolean }
   market: { eligible_count: number; excluded_count: number; return: number | null }
   eligible_count: number
   matched_count: number
@@ -55,12 +55,22 @@ export class AgentApiError extends Error {
 }
 
 async function request<T>(path: string, method = 'GET', body?: object): Promise<T> {
-  const response = await fetch(`/api/v1/agent${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  const payload = await response.json()
+  let response: Response
+  try {
+    response = await fetch(`/api/v1/agent${path}`, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  } catch {
+    throw new AgentApiError('Cannot reach the research agent service. Check the connection and retry.', 0)
+  }
+  let payload: { detail?: string }
+  try {
+    payload = await response.json()
+  } catch {
+    throw new AgentApiError('The research agent service returned an unreadable response. Check its configuration and retry.', response.status)
+  }
   if (!response.ok) {
     const message = typeof payload.detail === 'string' ? payload.detail : `Agent request failed (${response.status}).`
     throw new AgentApiError(message, response.status)
@@ -146,9 +156,10 @@ function findFixtureTurn(store: FixtureStore, turnId: string): FixtureTurn {
   throw new AgentApiError('Turn not found.', 404)
 }
 
-export const agent = {
+export function createAgentAdapter(mode: 'api' | 'fixture') {
+  return {
   async createConversation(): Promise<string> {
-    if (agentMode === 'api') {
+    if (mode === 'api') {
       const response = await request<{ conversation_id: string }>('/conversations', 'POST')
       return response.conversation_id
     }
@@ -160,7 +171,7 @@ export const agent = {
   },
 
   async getConversation(id: string): Promise<AgentConversation> {
-    if (agentMode === 'api') return request<AgentConversation>(`/conversations/${encodeURIComponent(id)}`)
+    if (mode === 'api') return request<AgentConversation>(`/conversations/${encodeURIComponent(id)}`)
     const store = readFixture()
     const conversation = store[id]
     if (!conversation) throw new AgentApiError('Conversation not found.', 404)
@@ -174,7 +185,7 @@ export const agent = {
   },
 
   async submitTurn(id: string, question: string, requestId: string): Promise<AgentTurn> {
-    if (agentMode === 'api') return request<AgentTurn>(`/conversations/${encodeURIComponent(id)}/turns`, 'POST', { request_id: requestId, question })
+    if (mode === 'api') return request<AgentTurn>(`/conversations/${encodeURIComponent(id)}/turns`, 'POST', { request_id: requestId, question })
     const store = readFixture()
     const conversation = store[id]
     if (!conversation) throw new AgentApiError('Conversation not found.', 404)
@@ -194,7 +205,7 @@ export const agent = {
   },
 
   async getTurn(id: string): Promise<AgentTurn> {
-    if (agentMode === 'api') return request<AgentTurn>(`/turns/${encodeURIComponent(id)}`)
+    if (mode === 'api') return request<AgentTurn>(`/turns/${encodeURIComponent(id)}`)
     const store = readFixture()
     const turn = findFixtureTurn(store, id)
     await settleFixture(store, turn)
@@ -202,7 +213,7 @@ export const agent = {
   },
 
   async cancelTurn(id: string): Promise<AgentTurn> {
-    if (agentMode === 'api') return request<AgentTurn>(`/turns/${encodeURIComponent(id)}/cancel`, 'POST')
+    if (mode === 'api') return request<AgentTurn>(`/turns/${encodeURIComponent(id)}/cancel`, 'POST')
     const store = readFixture()
     const turn = findFixtureTurn(store, id)
     if (turn.status === 'running') {
@@ -214,7 +225,7 @@ export const agent = {
   },
 
   async deleteConversation(id: string): Promise<void> {
-    if (agentMode === 'api') {
+    if (mode === 'api') {
       await request<{ deleted: true }>(`/conversations/${encodeURIComponent(id)}`, 'DELETE')
       return
     }
@@ -223,4 +234,7 @@ export const agent = {
     delete store[id]
     saveFixture(store)
   },
+  }
 }
+
+export const agent = createAgentAdapter(agentMode)
