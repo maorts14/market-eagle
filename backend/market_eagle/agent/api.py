@@ -13,6 +13,7 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 
 from .models import Limits
+from .postgres_store import PostgresAgentStore
 from .store import AgentStore, BusyConversation
 from .workflow import AgentTurnWorkflow
 
@@ -27,7 +28,7 @@ def workflow_id(turn_id: str) -> str:
 
 
 async def reconcile_turn(
-    store: AgentStore,
+    store: AgentStore | PostgresAgentStore,
     temporal: Client,
     turn_id: str,
     limits: Limits,
@@ -83,7 +84,7 @@ async def reconcile_turn(
 
 
 def create_agent_router(
-    store: AgentStore,
+    store: AgentStore | PostgresAgentStore,
     temporal: Client | Callable[[], Client],
     limits: Limits,
     reference_date: Callable[[], date] = date.today,
@@ -200,7 +201,7 @@ def create_agent_router(
     return router
 
 
-def public_turn(store: AgentStore, turn: dict) -> dict:
+def public_turn(store: AgentStore | PostgresAgentStore, turn: dict) -> dict:
     evidence = store.evidence(turn["evidence_id"]) if turn["evidence_id"] else None
     trusted = None
     if evidence is not None:

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 from market_eagle.agent.activities import AgentActivities
 from market_eagle.agent.models import Decision, Limits
-from market_eagle.agent.store import AgentStore
+from market_eagle.agent.postgres_store import PostgresAgentStore
 from market_eagle.agent.workflow import AgentTurnWorkflow
 from market_eagle.analytics.fixture_repository import SyntheticFixtureRepository
 from market_eagle.analytics.models import AnalyticalRequest
@@ -32,15 +32,19 @@ def test_postgres_explorer_matches_committed_fixture_windows() -> None:
     if not database_url:
         pytest.skip("local PostgreSQL integration database is not configured")
     with psycopg.connect(database_url) as conn:
-        reader, can_select, can_insert, can_read_revision = conn.execute(
-            "SELECT current_user, has_table_privilege(current_user, 'security', 'SELECT'), "
-            "has_table_privilege(current_user, 'security', 'INSERT'), "
-            "has_table_privilege(current_user, 'daily_bar_revision', 'SELECT')"
-        ).fetchone()
+        reader, can_select, can_insert, can_read_revision, can_read_agent = (
+            conn.execute(
+                "SELECT current_user, has_table_privilege(current_user, 'security', 'SELECT'), "
+                "has_table_privilege(current_user, 'security', 'INSERT'), "
+                "has_table_privilege(current_user, 'daily_bar_revision', 'SELECT'), "
+                "has_table_privilege(current_user, 'agent_conversation', 'SELECT')"
+            ).fetchone()
+        )
         assert reader == "market_eagle_reader"
         assert can_select is True
         assert can_insert is False
         assert can_read_revision is False
+        assert can_read_agent is False
     postgres = PostgresAnalyticsRepository(
         database_url,
         source="synthetic-v1",
@@ -101,10 +105,12 @@ def test_postgres_explorer_matches_committed_fixture_windows() -> None:
     assert stored_analysis["rows"][0]["ticker"] == "EPSI"
 
 
-def test_postgres_agent_turn_through_http_and_temporal(tmp_path: Path) -> None:
+def test_postgres_agent_turn_through_http_and_temporal(monkeypatch) -> None:
     database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
+    agent_database_url = os.environ.get("AGENT_DATABASE_URL")
+    if not database_url or not agent_database_url:
         pytest.skip("local PostgreSQL integration database is not configured")
+    monkeypatch.setenv("AGENT_DATABASE_URL", agent_database_url)
     repository = PostgresAnalyticsRepository(
         database_url,
         source="synthetic-v1",
@@ -112,7 +118,7 @@ def test_postgres_agent_turn_through_http_and_temporal(tmp_path: Path) -> None:
         price_basis="synthetic_raw",
         exchange="SYNTHETIC",
     )
-    store = AgentStore(tmp_path / "agent.sqlite")
+    store = PostgresAgentStore(agent_database_url)
     limits = Limits()
 
     class FixedModel:
@@ -176,7 +182,6 @@ def test_postgres_agent_turn_through_http_and_temporal(tmp_path: Path) -> None:
                 ):
                     app = create_app(
                         repository,
-                        agent_store=store,
                         temporal=environment.client,
                         agent_enabled=True,
                     )
@@ -215,5 +220,9 @@ def test_postgres_agent_turn_through_http_and_temporal(tmp_path: Path) -> None:
                             f"/api/v1/agent/evidence/{result['evidence_id']}"
                         )
                         assert evidence.status_code == 200
+                        deleted = await client.delete(
+                            f"/api/v1/agent/conversations/{conversation_id}"
+                        )
+                        assert deleted.status_code == 200
 
     asyncio.run(run())

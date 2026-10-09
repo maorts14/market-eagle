@@ -12,15 +12,29 @@ Use `python dev.py integration` to load the fictional fixture and verify the
 API, Temporal, and PostgreSQL path. Start `python dev.py api`; set
 `OPENROUTER_API_KEY` in ignored `infra/.env` and keep `OPENROUTER_MODEL` set to
 `nvidia/nemotron-3-super-120b-a12b:free`, then start
-`python dev.py agent-worker` separately. Both processes use the same SQLite
-file, Temporal namespace, task queue, and limits. Only the worker receives the
+`python dev.py agent-worker` separately. Both processes use the same application
+PostgreSQL agent tables, Temporal namespace, task queue, and limits. Only the worker receives the
 OpenRouter key. The model slug is fixed so requests cannot silently route to a
 paid or random model. The worker calls OpenRouter's Chat Completions endpoint
 with a strict JSON schema for interpretation and validates the response again
 with `Decision`; it does not use `responses.parse`. Provider routing requires
-support for the requested structured-output parameter. SQLite writes are
-transactional and WAL enabled; a future multi-host deployment should replace
-this agent-owned store with a transactional shared store.
+support for the requested structured-output parameter. `DATABASE_URL` remains
+read-only for market calculations; `AGENT_DATABASE_URL` grants read/write access
+only to the agent tables. Migration `003_agent_store.sql` creates those tables.
+`AgentStore` remains a SQLite test fixture, not a runtime fallback.
+
+For an existing local `local-data/agent.sqlite`, stop the API and worker, apply
+the PostgreSQL migrations, and import into **empty** agent tables before starting
+the new runtime:
+
+```text
+python dev.py migrate-agent-store
+```
+
+For other environments, run `python -m market_eagle.agent.migrate_sqlite
+--source PATH` with `AGENT_DATABASE_URL` set. The import is transactional and
+refuses to merge into a nonempty agent store. Keep the SQLite file until the
+imported conversations and evidence have been checked.
 
 The [selected free model](https://openrouter.ai/nvidia/nemotron-3-super-120b-a12b:free)
 currently lists structured-output support. [OpenRouter's free plan](https://openrouter.ai/pricing)

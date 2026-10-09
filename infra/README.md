@@ -19,17 +19,14 @@ Compose, images, Git, or workflow payloads. This Compose file is a development
 stack; Temporal's `auto-setup` is not a production upgrade plan. The first
 private deployment needs a separate reviewed configuration and measured sizing.
 
-`python dev.py verify` checks deterministic fixture regeneration and, once the
-backend exists, runs its formatting, lint, and tests. `python dev.py integration`
-also starts the stack, applies Alembic migrations, and runs tests marked
-`synthetic_integration`. The backend handoff contract is:
+`python dev.py verify` checks deterministic fixture regeneration, formatting,
+lint, and tests. `python dev.py integration` also starts the stack, applies
+numbered SQL migrations, loads the fixture, creates separate read-only market
+and agent-table roles, and runs tests marked `synthetic_integration`.
 
-- `backend/pyproject.toml` installs with `pip install -e './backend[dev]'` and
-  provides `ruff`, `pytest`, and `alembic`.
-- `backend/alembic.ini` accepts `DATABASE_URL` for migration configuration.
-- Backend synthetic tests use `@pytest.mark.synthetic_integration` and load
-  the committed fixture into the application database. They must exercise the
-  explorer windows and typed gain-plus-volume request in the v1 contract.
-
-CI runs the service and fixture checks now. The backend steps activate when
-`backend/pyproject.toml` is added; until then the synthetic API gate cannot run.
+- `backend/pyproject.toml` installs with `pip install -e './backend[dev]'`.
+- `python -m market_eagle.ingestion.migrate` applies `database/migrations/*.sql`
+  once with checksum verification using the application owner `DATABASE_URL`.
+- The API and agent worker receive `DATABASE_URL` for read-only analytics and
+  `AGENT_DATABASE_URL` for research state. The local agent role has no access to
+  market tables. Production credentials must provide the same separation.
