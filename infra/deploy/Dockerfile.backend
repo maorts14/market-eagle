@@ -1,0 +1,23 @@
+FROM python:3.12.12-slim-bookworm@sha256:593bd06efe90efa80dc4eee3948be7c0fde4134606dd40d8dd8dbcade98e669c
+
+ARG SOURCE_REVISION=unreviewed
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/backend
+
+WORKDIR /app
+COPY backend/pyproject.toml /app/backend/pyproject.toml
+COPY backend/market_eagle /app/backend/market_eagle
+COPY database/migrations /app/database/migrations
+RUN pip install --no-cache-dir /app/backend \
+    && groupadd --system --gid 10001 market-eagle \
+    && useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent market-eagle
+
+COPY infra/deploy/backend-entrypoint.sh /usr/local/bin/market-eagle-entrypoint
+RUN chmod 0555 /usr/local/bin/market-eagle-entrypoint
+
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/market-eagle-entrypoint"]
+CMD ["python", "-m", "uvicorn", "market_eagle.app:app", "--host", "0.0.0.0", "--port", "8000"]

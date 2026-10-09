@@ -1,0 +1,11 @@
+**
+!backend/
+!backend/pyproject.toml
+!backend/market_eagle/
+!backend/market_eagle/**
+!database/
+!database/migrations/
+!database/migrations/**
+!infra/
+!infra/deploy/
+!infra/deploy/backend-entrypoint.sh
