@@ -1,0 +1,80 @@
+"""Probe, stage, inspect, and explicitly publish an FMP constituent snapshot."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+
+import httpx
+import psycopg
+
+from .fmp import FmpRequestError, FmpTransportError, fetch_constituents
+from .fmp_stage import publish_reviewed_stage, review_stage, stage_constituents
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subcommands = parser.add_subparsers(dest="command", required=True)
+    subcommands.add_parser(
+        "probe", help="one bounded read-only request; report metadata only"
+    )
+    subcommands.add_parser(
+        "stage", help="fetch and hold a normalized candidate for review"
+    )
+    review = subcommands.add_parser(
+        "review", help="show staged changes and identity gaps"
+    )
+    review.add_argument("stage_id")
+    publish = subcommands.add_parser(
+        "publish", help="publish with an explicit reviewed approval file"
+    )
+    publish.add_argument("approval_file", type=Path)
+    args = parser.parse_args()
+
+    if args.command in ("probe", "stage"):
+        key = os.environ.get("FMP_API_KEY")
+        if not key:
+            parser.error("FMP_API_KEY is required for an authenticated probe or stage")
+        try:
+            with httpx.Client() as client:
+                fetched = fetch_constituents(client, key)
+        except (FmpRequestError, FmpTransportError) as error:
+            parser.error(str(error))
+        result = {
+            "endpoint": "stable/sp500-constituent",
+            "fetched_at": fetched.fetched_at.isoformat(),
+            "row_count": len(fetched.rows),
+            "byte_count": fetched.byte_count,
+            "checksum": fetched.checksum,
+            "rate_headers": fetched.rate_headers,
+            "provider_publication_time": None,
+        }
+        if args.command == "probe":
+            print(json.dumps(result, indent=2))
+            return
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        parser.error("DATABASE_URL is required for staging, review, or publication")
+    with psycopg.connect(database_url) as conn:
+        if args.command == "stage":
+            result.update(stage_constituents(conn, fetched))
+        elif args.command == "review":
+            result = review_stage(conn, args.stage_id)
+        else:
+            approval = json.loads(args.approval_file.read_text(encoding="utf-8"))
+            snapshot_id = publish_reviewed_stage(
+                conn,
+                stage_id=approval["stage_id"],
+                expected_checksum=approval["checksum"],
+                reviewer=approval["reviewer"],
+                review_note=approval["review_note"],
+                decisions=approval["decisions"],
+            )
+            result = {"status": "published", "snapshot_id": snapshot_id}
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    main()
