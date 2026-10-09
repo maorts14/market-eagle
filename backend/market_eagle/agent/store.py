@@ -23,7 +23,8 @@ class AgentStore:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS conversations (
                     id TEXT PRIMARY KEY, active_turn_id TEXT, summary TEXT,
-                    summary_through_turn_id TEXT, summary_version INTEGER NOT NULL DEFAULT 1
+                    summary_through_turn_id TEXT, summary_version INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT, updated_at TEXT
                 );
                 CREATE TABLE IF NOT EXISTS turns (
                     id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
@@ -47,6 +48,28 @@ class AgentStore:
                     FOREIGN KEY(turn_id) REFERENCES turns(id)
                 );
             """)
+            columns = {
+                row["name"] for row in db.execute("PRAGMA table_info(conversations)")
+            }
+            for column in ("created_at", "updated_at"):
+                if column not in columns:
+                    db.execute(f"ALTER TABLE conversations ADD COLUMN {column} TEXT")
+            # Existing local stores predate the conversation index. Keep their
+            # original turn time when available so ordering remains meaningful.
+            now = datetime.now(timezone.utc).isoformat()
+            db.execute(
+                """UPDATE conversations SET created_at=COALESCE(created_at,
+                       (SELECT MIN(created_at) FROM turns WHERE conversation_id=conversations.id), ?)""",
+                (now,),
+            )
+            db.execute(
+                """UPDATE conversations SET updated_at=COALESCE(updated_at,
+                       (SELECT MAX(COALESCE(finished_at, created_at)) FROM turns
+                        WHERE conversation_id=conversations.id), created_at)"""
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS conversations_by_updated_at ON conversations(updated_at DESC, id)"
+            )
 
     def _connect(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -57,9 +80,25 @@ class AgentStore:
 
     def create_conversation(self) -> str:
         conversation_id = str(uuid4())
+        now = datetime.now(timezone.utc).isoformat()
         with self._connect() as db:
-            db.execute("INSERT INTO conversations(id) VALUES (?)", (conversation_id,))
+            db.execute(
+                "INSERT INTO conversations(id, created_at, updated_at) VALUES (?, ?, ?)",
+                (conversation_id, now, now),
+            )
         return conversation_id
+
+    def list_conversations(self) -> list[dict]:
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT c.id AS conversation_id, c.active_turn_id, c.updated_at,
+                          (SELECT question FROM turns WHERE conversation_id=c.id
+                           ORDER BY created_at, rowid LIMIT 1) AS title
+                   FROM conversations AS c ORDER BY c.updated_at DESC, c.id DESC"""
+            ).fetchall()
+        return [
+            {**dict(row), "title": row["title"] or "New conversation"} for row in rows
+        ]
 
     def submit(
         self, conversation_id: str, request_id: str, question: str, reference_date: str
@@ -94,8 +133,8 @@ class AgentStore:
                 (turn_id, conversation_id, request_id, question, reference_date, now),
             )
             db.execute(
-                "UPDATE conversations SET active_turn_id=? WHERE id=?",
-                (turn_id, conversation_id),
+                "UPDATE conversations SET active_turn_id=?, updated_at=? WHERE id=?",
+                (turn_id, now, conversation_id),
             )
             return dict(
                 db.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone()
@@ -288,8 +327,12 @@ class AgentStore:
                 ),
             )
             db.execute(
-                "UPDATE conversations SET active_turn_id=NULL WHERE id=? AND active_turn_id=?",
-                (current["conversation_id"], turn_id),
+                "UPDATE conversations SET active_turn_id=NULL, updated_at=? WHERE id=? AND active_turn_id=?",
+                (
+                    datetime.now(timezone.utc).isoformat(),
+                    current["conversation_id"],
+                    turn_id,
+                ),
             )
             return dict(
                 db.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone()
