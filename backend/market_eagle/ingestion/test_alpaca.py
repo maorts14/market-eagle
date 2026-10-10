@@ -8,9 +8,11 @@ from .alpaca import AlpacaRequestError, historical_pages, page_rows
 
 def test_historical_reader_follows_all_page_tokens():
     tokens = []
+    ends = []
 
     def respond(request: httpx.Request) -> httpx.Response:
         tokens.append(request.url.params.get("page_token"))
+        ends.append(request.url.params["end"])
         if len(tokens) == 1:
             return httpx.Response(
                 200,
@@ -47,6 +49,7 @@ def test_historical_reader_follows_all_page_tokens():
             )
         )
     assert tokens == [None, "next"]
+    assert ends == ["2026-01-01T00:00:00+00:00"] * 2
     assert len(pages) == 2
     rows = page_rows(*pages[0], source="alpaca", feed="sip", basis="raw")
     assert rows[0]["session_date"] == "2025-12-30"

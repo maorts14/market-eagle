@@ -48,6 +48,8 @@ The explicit `publish` command writes securities, dated FMP aliases, source-labe
 
 ## Prepare a live Alpaca collection universe
 
+For a private five-stock, two-year validation before FMP catalog access, follow the [sample operator runbook](ALPACA_SAMPLE_RUNBOOK.md). Its `alpaca-sample-v1` snapshot is explicitly separate from S&P membership and does not replace the current catalog.
+
 FMP's `UNVERIFIED` exchange aliases are insufficient for price collection. Alpaca's [asset list](https://docs.alpaca.markets/us/reference/get-v2-assets-1) supplies current asset IDs, symbols, exchange, class, and status; its [trading calendar](https://docs.alpaca.markets/us/reference/legacycalendar) supplies session dates and regular open/close times. Neither proves a ticker's five-year history or that an FMP share line matches an Alpaca asset. The operator must review those claims using dated evidence before a collection plan is usable.
 
 For a published FMP snapshot, use the paper credentials in local environment variables and choose the full requested window. The preparation fetches the preceding trading session too, to supply the comparison close. `probe` and `stage` make one bounded asset request and one bounded calendar request. They do not change current membership or start collection.

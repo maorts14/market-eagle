@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import httpx
 
@@ -41,11 +41,16 @@ def historical_pages(
         "all",
     ):
         raise ValueError("unsupported feed or adjustment")
+    # An exact UTC cutoff excludes the next session from SIP entitlement checks.
     params = {
         "symbols": ",".join(symbols),
         "timeframe": "1Day",
         "start": start.isoformat(),
-        "end": end_at.isoformat() if end_at else (end + timedelta(days=1)).isoformat(),
+        "end": end_at.isoformat()
+        if end_at
+        else datetime.combine(
+            end + timedelta(days=1), time.min, timezone.utc
+        ).isoformat(),
         "limit": 10000,
         "feed": feed,
         "adjustment": adjustment,
