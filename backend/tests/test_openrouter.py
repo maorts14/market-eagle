@@ -149,6 +149,26 @@ def test_incomplete_or_invalid_provider_output_fails_closed():
         adapter.interpret(context)
 
 
+@pytest.mark.parametrize("choices", [None, []])
+def test_provider_response_without_choices_fails_closed(choices):
+    def respond(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json=mock_model_response("unused") | {"choices": choices}
+        )
+
+    client = OpenAI(
+        api_key="test-key",
+        base_url=OPENROUTER_BASE_URL,
+        http_client=httpx.Client(transport=httpx.MockTransport(respond)),
+        max_retries=0,
+    )
+    adapter = OpenRouterResearchModel(
+        api_key="test-key", model=FREE_MODEL, client=client
+    )
+    with pytest.raises(ValueError, match="no completion choices"):
+        adapter.explain("question", {}, [])
+
+
 def test_worker_requires_openrouter_key_and_explicit_free_slug(monkeypatch):
     with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
         OpenRouterResearchModel(api_key="", model=FREE_MODEL)
