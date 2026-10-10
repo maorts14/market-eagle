@@ -1,6 +1,6 @@
 # Private homelab deployment assets
 
-This is the first implementation slice of [ADR 0001](../../knowledge-base/adr/0001-private-homelab-runtime.md). It provides image builds and Compose wiring for a single-host deployment. It does **not** initialize production databases, register Temporal schedules, configure Tailscale, start live collection, or deploy to `thelab`. The existing `infra/compose.yaml` remains the local development stack.
+This implements the private runtime and reviewed bootstrap from [ADR 0001](../../knowledge-base/adr/0001-private-homelab-runtime.md). It does **not** register Temporal schedules, configure Tailscale, start live collection, or deploy to `thelab`. The existing `infra/compose.yaml` remains the local development stack.
 
 ## Images and services
 
@@ -8,7 +8,7 @@ This is the first implementation slice of [ADR 0001](../../knowledge-base/adr/00
 
 `compose.yaml` defines PostgreSQL, a non-`auto-setup` Temporal server, API, agent worker, and web gateway. Only the gateway publishes a default host port, and it binds `127.0.0.1`. Temporal UI is an optional operator profile with a separate loopback port. Collection is behind the `collection` profile and does not start in a default `up`. **Do not activate collection simply to test Compose.** The current worker has a process-local provider rate limiter, so this stack allows only one collection process.
 
-The merged `003` PostgreSQL-store migration uses a read-only market `DATABASE_URL` and a separate `AGENT_DATABASE_URL` for conversation writes. Both API and agent worker receive these URLs and their narrowly scoped password files. The old `AGENT_STORE_PATH` SQLite file is not mounted or configured. The application migration and role grants must run before the API and agent start. This slice leaves application and worker code untouched.
+The `003` PostgreSQL-store migration uses a read-only market `DATABASE_URL` and a separate `AGENT_DATABASE_URL` for conversation writes. Both API and agent worker receive these URLs and their narrowly scoped password files. The old `AGENT_STORE_PATH` SQLite file is not mounted or configured. The `004` Alpaca preparation and `005` private sample tables are included in the ingestion grants.
 
 ## Host inputs and secret files
 
@@ -29,7 +29,28 @@ Copy `.env.example` to an **untracked file outside the repository** and replace 
 
 The backend entrypoint copies its mounted `.pgpass` lines into one private `0600` file before starting Python because libpq rejects a broadly readable password file. It also bridges mounted provider/model keys into the environment expected by the current worker code. Temporal 1.27 likewise requires `POSTGRES_PWD` in its environment; `temporal-entrypoint.sh` reads its isolated secret mount. These are compatibility bridges, not a claim that the running processes never hold secrets in memory or environment. Do not print resolved secrets with `docker compose config`, `docker inspect`, shell tracing, or logs. File ownership must let the intended container user read its own mount.
 
-The database roles and three databases (`market_eagle`, `temporal`, `temporal_visibility`) are **prerequisites**. This slice does not create them. The Temporal schemas must be installed by a version-matched, reviewed bootstrap before the server can start. `migrate-app` is an explicit one-shot application migration service after the database/role bootstrap. There is no automatic `auto-setup` or implicit schema migration on container restart. Temporal namespace and schedule bootstrap remain separate implementation handoffs in ADR 0001.
+## Reviewed bootstrap and operator order
+
+The maintenance profile contains explicit, repeatable one-shot jobs. It creates `market_eagle`, `temporal`, and `temporal_visibility`, the corresponding login roles, the five application migrations, service-specific grants, both Temporal schemas, and the `market-eagle-private` namespace. Temporal schema tooling is pinned to the same server version (`1.27.2`). The namespace has seven-day closed-workflow retention. Re-running each job preserves existing application and workflow data; migrations verify checksums. A database with an unexpected owner stops bootstrap for operator review. Bootstrap does not register a schedule or call a market-data provider.
+
+After reviewing the release images, credentials, NVMe mount, and the exact command arguments, run these commands **in order** with a private env file outside Git. From the repository root in a POSIX shell:
+
+```sh
+ENV_FILE=/path/to/private.env
+compose() { docker compose --env-file "$ENV_FILE" -f infra/deploy/compose.yaml "$@"; }
+compose up -d postgres
+compose --profile maintenance run --rm bootstrap-db
+compose --profile maintenance run --rm migrate-app
+compose --profile maintenance run --rm bootstrap-grants
+compose --profile maintenance run --rm bootstrap-temporal
+compose up -d temporal
+compose --profile maintenance run --rm bootstrap-namespace
+compose up -d api agent web
+```
+
+`bootstrap-db` sets or rotates passwords from the mounted secret files, creates databases with `app_migrator` or `temporal_service` as owner, and removes public database access. `migrate-app` applies `001` through `005` as the application owner. `bootstrap-grants` resets runtime-role table and sequence privileges, then grants the reader only market projections, the agent only its conversation tables and identity sequences, and ingestion only market/catalog/preparation/sample tables plus the selected-bar view. Run `bootstrap-grants` after any future migration that adds runtime objects. The maintenance jobs must finish successfully before the runtime is started. They are not normal startup dependencies and never run automatically on container restart.
+
+The API keeps `/api/v1/health` for process liveness. `/api/v1/ready` checks read access to the market view, agent-store access, and a Temporal namespace RPC. Compose uses readiness for its API healthcheck and waits for it before starting the web gateway. A failed check returns HTTP 503 without credentials or driver diagnostics. Temporal's own Compose healthcheck only checks its listener; API readiness provides the dependency check.
 
 ## Configuration and local dry-run
 
@@ -42,4 +63,4 @@ docker compose --env-file infra/deploy/.env.example -f infra/deploy/compose.yaml
 
 For a real host review, use the private env file instead of `.env.example`, then inspect `docker compose ... config --format json` without sharing its output. Confirm that PostgreSQL, Temporal gRPC, API, and workers have no published ports; only web (and opt-in Temporal UI) bind loopback. Confirm `postgres` resolves to the NVMe path and the generated frontend has `VITE_EXPLORER_MODE=api` and `VITE_AGENT_MODE=api`. `docker compose build` may fetch pinned base images and package dependencies; it does not deploy them.
 
-Before an actual `up`, the lead must approve the database/Temporal schema bootstrap, service-specific grants for migration `003`, a real source/feed/basis, a model key, namespace/schedule setup, Tailscale Serve and owner ACL, readiness checks beyond the current API liveness endpoint, and a failure/restart drill. The first private deployment deliberately has **no backup or restore process**. A host/disk loss can erase application, agent, and Temporal state; backups become a later gate before important retained research or trader access.
+Before an actual host deployment, the lead must approve a real source/feed/basis, model key, schedule setup, Tailscale Serve and owner ACL, and a failure/restart drill. The first private deployment deliberately has **no backup or restore process**. A host/disk loss can erase application, agent, and Temporal state; backups become a later gate before important retained research or trader access.

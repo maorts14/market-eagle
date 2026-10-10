@@ -80,9 +80,9 @@ services:
       - market_reader_pgpass
       - agent_store_pgpass
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready', timeout=15)"]
       interval: 10s
-      timeout: 5s
+      timeout: 17s
       start_period: 30s
       retries: 6
     restart: unless-stopped
@@ -185,6 +185,68 @@ services:
       PGPASS_SECRET: app_migrator_pgpass
     secrets:
       - app_migrator_pgpass
+    restart: "no"
+    networks: [private]
+
+  bootstrap-db:
+    profiles: [maintenance]
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE to a reviewed release}
+    command: ["python", "-m", "market_eagle.ingestion.bootstrap", "init"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    secrets:
+      - postgres_admin_password
+      - temporal_db_password
+      - market_reader_pgpass
+      - agent_store_pgpass
+      - app_ingest_pgpass
+      - app_migrator_pgpass
+    restart: "no"
+    networks: [private]
+
+  bootstrap-grants:
+    profiles: [maintenance]
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE to a reviewed release}
+    command: ["python", "-m", "market_eagle.ingestion.bootstrap", "grants"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    secrets:
+      - postgres_admin_password
+    restart: "no"
+    networks: [private]
+
+  bootstrap-temporal:
+    profiles: [maintenance]
+    image: temporalio/admin-tools:1.27.2-tctl-1.18.2-cli-1.3.0@sha256:b5ae59dae6ea00c22fc2bdf04a2cfaf59e3e036b8b09ca777f99e2c871396fa2
+    entrypoint: ["/bin/sh", "/scripts/bootstrap-temporal.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: temporal_service
+    secrets:
+      - temporal_db_password
+    volumes:
+      - ./bootstrap-temporal.sh:/scripts/bootstrap-temporal.sh:ro
+    restart: "no"
+    networks: [private]
+
+  bootstrap-namespace:
+    profiles: [maintenance]
+    image: temporalio/admin-tools:1.27.2-tctl-1.18.2-cli-1.3.0@sha256:b5ae59dae6ea00c22fc2bdf04a2cfaf59e3e036b8b09ca777f99e2c871396fa2
+    entrypoint: ["/bin/sh", "/scripts/bootstrap-namespace.sh"]
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: market-eagle-private
+    volumes:
+      - ./bootstrap-namespace.sh:/scripts/bootstrap-namespace.sh:ro
     restart: "no"
     networks: [private]
 
