@@ -58,14 +58,18 @@ def stage_preparation(
     )
     with conn.transaction(), conn.cursor() as cur:
         cur.execute(
-            "SELECT s.source FROM universe_snapshot s JOIN catalog_current c "
-            "ON c.snapshot_id = s.snapshot_id WHERE c.singleton = true AND s.snapshot_id = %s "
-            "AND s.validation_state = 'published'",
+            "SELECT s.source, c.snapshot_id IS NOT NULL FROM universe_snapshot s "
+            "LEFT JOIN catalog_current c ON c.snapshot_id = s.snapshot_id "
+            "WHERE s.snapshot_id = %s AND s.validation_state = 'published'",
             (snapshot_id,),
         )
-        current = cur.fetchone()
-        if current is None or current[0] != "fmp-sp500":
-            raise ValueError("preparation requires the current reviewed FMP snapshot")
+        catalog = cur.fetchone()
+        if catalog is None or not (
+            catalog[0] == "alpaca-sample-v1" or catalog == ("fmp-sp500", True)
+        ):
+            raise ValueError(
+                "preparation requires a reviewed FMP or private sample snapshot"
+            )
         cur.execute(
             "SELECT status FROM alpaca_collection_preparation WHERE preparation_id = %s",
             (preparation_id,),
@@ -223,10 +227,20 @@ def approve_preparation(
             )
         if status == "prepared":
             return collection_request(conn, preparation_id)
-        cur.execute("SELECT snapshot_id FROM catalog_current WHERE singleton = true")
-        current = cur.fetchone()
-        if current is None or current[0] != snapshot_id:
-            raise ValueError("current catalog changed after preparation was staged")
+        cur.execute(
+            "SELECT source FROM universe_snapshot WHERE snapshot_id = %s AND validation_state = 'published'",
+            (snapshot_id,),
+        )
+        catalog = cur.fetchone()
+        if catalog is None or catalog[0] not in ("fmp-sp500", "alpaca-sample-v1"):
+            raise ValueError("prepared catalog is no longer published")
+        if catalog[0] == "fmp-sp500":
+            cur.execute(
+                "SELECT snapshot_id FROM catalog_current WHERE singleton = true"
+            )
+            current = cur.fetchone()
+            if current is None or current[0] != snapshot_id:
+                raise ValueError("current catalog changed after preparation was staged")
         cur.execute(
             "SELECT stock_id, source_ticker FROM universe_member WHERE snapshot_id = %s",
             (snapshot_id,),
