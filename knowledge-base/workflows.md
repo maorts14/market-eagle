@@ -20,6 +20,8 @@ A **business flow** is the ordered movement of data from a source to a usable an
 
 The first workflow definitions share the same ingestion activities, not separate copies of market-data logic. Workflow IDs prevent accidental overlapping executions of the same logical job; a deliberate new run uses a new request ID. Temporal history holds workflow status, attempts, and small counts. PostgreSQL holds catalog and prices. The operator can inspect Temporal for run progress, while the explorer derives eligible counts from the current database.
 
+The [scheduled collection contract](scheduled-collection-contract.md) proposes the calendar gate, finite reviewed authorization, tick offsets, overlap/catchup behavior, and provider budget required before these session workflows are registered automatically. It is a proposal, not an enabled schedule or a change to manual catalog publication.
+
 ### Accepted grouping and retry boundaries
 
 The earlier **25 stocks × one year** was a sizing guess. The accepted default is **five stocks × five years per activity**: about 5 × 5 × 252 = 6,300 daily bars. Request `limit=10000` on Alpaca's [multi-symbol endpoint](https://docs.alpaca.markets/us/v1.1/reference/stockbars); all bars can fit in one response, but the provider may return fewer, so the activity must follow every `next_page_token`. It saves each received page in a short, idempotent database transaction and returns only small counts/status to the workflow.
