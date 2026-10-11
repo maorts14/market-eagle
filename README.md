@@ -34,6 +34,7 @@ Temporal gRPC at `localhost:7233`, and the UI at
 .venv/Scripts/python dev.py api          # serve the PostgreSQL-backed explorer on localhost:8000
 .venv/Scripts/python dev.py agent-worker # run the research-agent Temporal worker
 .venv/Scripts/python dev.py migrate-agent-store # one-time import of old local SQLite conversations
+.venv/Scripts/python dev.py agent-evaluation # export stored turns for human review
 .venv/Scripts/python dev.py down         # stop services without deleting data
 ```
 

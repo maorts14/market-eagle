@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import psycopg
 import pytest
+from market_eagle.agent.evaluation_records import build_input_record, load_cases
 from market_eagle.agent.migrate_sqlite import migrate_sqlite_store
 from market_eagle.agent.postgres_store import PostgresAgentStore
 from market_eagle.agent.store import AgentStore, BusyConversation
@@ -154,4 +155,50 @@ def test_imports_existing_sqlite_conversations_into_empty_postgres(store, tmp_pa
         with pytest.raises(RuntimeError, match="must be empty"):
             migrate_sqlite_store(source.path, store.database_url)
     finally:
+        store.delete_conversation(conversation_id)
+
+
+def test_postgres_turn_exports_bounded_review_input(store):
+    _, cases = load_cases()
+    case = cases["gain-dollar-frequency-previous-month"]
+    conversation_id = store.create_conversation()
+    turn = store.submit(conversation_id, "review-case", case["question"], "2026-01-08")
+    result = {
+        "request_version": 1,
+        "metric_version": "synthetic-metric-v1",
+        "requested_window": {"start": "2025-12-01", "end": "2025-12-31"},
+        "resolved_window": {"start": "2025-12-01", "end": "2025-12-31"},
+        "catalog": {"tracked_count": 5},
+        "data": {"source": "synthetic-v1"},
+        "market": {},
+        "eligible_count": 4,
+        "matched_count": 1,
+        "exclusions": [],
+        "rows": [{"ticker": "EPSI"}],
+        "calculated_at": "2026-01-08T12:00:00+00:00",
+    }
+    try:
+        evidence_id = store.save_evidence(turn["id"], result)
+        store.trace(turn["id"], "tool_verified", {"evidence_id": evidence_id})
+        store.finish(
+            turn["id"],
+            "completed",
+            evidence_id=evidence_id,
+            explanation="EPSI leads among eligible stocks.",
+        )
+        record = build_input_record(
+            store,
+            case,
+            dataset_version="synthetic-agent-v1",
+            run_id="review-1",
+            model_id="fixed-test-model",
+            turn_id=turn["id"],
+        )
+        assert record["trusted_result"]["rows"][0]["ticker"] == "EPSI"
+        assert record["agent_explanation"] == "EPSI leads among eligible stocks."
+        assert record["trace_stages"][0]["stage"] == "tool_verified"
+    finally:
+        active = store.conversation(conversation_id)["active_turn_id"]
+        if active:
+            store.finish(active, "cancelled")
         store.delete_conversation(conversation_id)

@@ -70,7 +70,9 @@ set.
 `evaluation-v1.json` records the initial programmatic scenarios and rubric;
 its prose cases are not human labels or a calibrated semantic release gate.
 The [answer-quality evaluation handoff](../../../knowledge-base/answer-quality-evaluation.md)
-defines input and human-review records for that pending gate.
+defines the `python dev.py agent-evaluation` export, blank-review, and
+validation workflow for that pending gate. It does not assign labels or a
+release threshold.
 Recent model context includes trusted prior result fields. Older context is
 summarized incrementally from original turns, with the summary's source span
 recorded; full original turns and evidence remain retrievable until deletion.

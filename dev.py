@@ -402,6 +402,22 @@ def migrate_agent_store() -> None:
     )
 
 
+def agent_evaluation(*args: str) -> None:
+    environment = os.environ.copy()
+    if args and args[0] == "export":
+        environment["AGENT_DATABASE_URL"] = agent_database_url()
+    environment["PYTHONPATH"] = (
+        str(BACKEND) + os.pathsep + environment.get("PYTHONPATH", "")
+    )
+    run(
+        sys.executable,
+        "-m",
+        "market_eagle.agent.evaluation_records",
+        *args,
+        env=environment,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -416,6 +432,7 @@ def main() -> None:
             "api",
             "agent-worker",
             "migrate-agent-store",
+            "agent-evaluation",
         ),
     )
     parser.add_argument("args", nargs=argparse.REMAINDER)
@@ -438,6 +455,8 @@ def main() -> None:
         serve_agent_worker()
     elif options.command == "migrate-agent-store":
         migrate_agent_store()
+    elif options.command == "agent-evaluation":
+        agent_evaluation(*options.args)
     else:
         fixture_check()
         compose("up", "-d", "--wait")
