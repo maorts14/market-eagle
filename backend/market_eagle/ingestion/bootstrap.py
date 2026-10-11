@@ -53,9 +53,6 @@ INGEST_TABLES = (
     "alpaca_preparation_asset",
     "alpaca_preparation_session",
     "alpaca_alias_approval",
-    "alpaca_sample_stage",
-    "alpaca_sample_asset",
-    "alpaca_sample_session",
 )
 
 

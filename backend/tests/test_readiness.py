@@ -74,3 +74,25 @@ def test_readiness_fails_when_market_database_fails(monkeypatch) -> None:
     response = api.get("/api/v1/ready")
     assert response.status_code == 503
     assert response.json() == {"status": "unavailable"}
+
+
+def test_production_readiness_requires_reviewed_market(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "market-url")
+    monkeypatch.setenv("MARKET_EAGLE_RUNTIME", "production")
+    monkeypatch.setenv("MARKET_EAGLE_SOURCE", "alpaca")
+    monkeypatch.setenv("MARKET_EAGLE_FEED", "sip")
+    monkeypatch.setattr(app_module, "_check_database", lambda *_args: None)
+    calls = []
+
+    def check_market(url: str, source: str, feed: str) -> None:
+        calls.append((url, source, feed))
+        raise RuntimeError("No reviewed catalog")
+
+    monkeypatch.setattr(app_module, "_check_production_market", check_market)
+    api = TestClient(
+        app_module.create_app(SyntheticFixtureRepository(FIXTURE), agent_enabled=False)
+    )
+    response = api.get("/api/v1/ready")
+    assert response.status_code == 503
+    assert response.json() == {"status": "unavailable"}
+    assert calls == [("market-url", "alpaca", "sip")]

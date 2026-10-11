@@ -52,6 +52,17 @@ def check() -> None:
     assert all_services["agent"]["environment"]["AGENT_DATABASE_URL"].startswith(
         "postgresql://market_eagle_agent@postgres:"
     )
+    for name in (
+        "api",
+        "agent",
+        "ingestion",
+        "migrate-app",
+        "bootstrap-db",
+        "bootstrap-grants",
+    ):
+        environment = all_services[name]["environment"]
+        assert environment["MARKET_EAGLE_RUNTIME"] == "production"
+        assert "MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID" not in environment
     for name, expected in (
         ("api", {"market_reader_pgpass", "agent_store_pgpass"}),
         ("agent", {"market_reader_pgpass", "agent_store_pgpass", "openrouter_key"}),

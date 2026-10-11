@@ -1,6 +1,6 @@
 # Private homelab deployment assets
 
-This implements the private runtime and reviewed bootstrap from [ADR 0001](../../knowledge-base/adr/0001-private-homelab-runtime.md). It does **not** register Temporal schedules, configure Tailscale, start live collection, or deploy to `thelab`. The existing `infra/compose.yaml` remains the local development stack.
+This implements the real-data private runtime and reviewed bootstrap from [ADR 0001](../../knowledge-base/adr/0001-private-homelab-runtime.md). It does **not** register Temporal schedules, configure Tailscale, start live collection, or deploy to `thelab`. The fictional five-stock fixture belongs in the local development/CI stack (`infra/compose.yaml`). The real Alpaca five-stock sample belongs in an isolated ingestion-review database. Neither is an application catalog for this deployment.
 
 ## Images and services
 
@@ -8,7 +8,7 @@ This implements the private runtime and reviewed bootstrap from [ADR 0001](../..
 
 `compose.yaml` defines PostgreSQL, a non-`auto-setup` Temporal server, API, agent worker, and web gateway. Only the gateway publishes a default host port, and it binds `127.0.0.1`. Temporal UI is an optional operator profile with a separate loopback port. Collection is behind the `collection` profile and does not start in a default `up`. **Do not activate collection simply to test Compose.** The current worker has a process-local provider rate limiter, so this stack allows only one collection process. Long-running containers use Docker's `json-file` driver with five 10 MiB files each; this bounds local container logs, but it is not a metrics or alerting system.
 
-The `003` PostgreSQL-store migration uses a read-only market `DATABASE_URL` and a separate `AGENT_DATABASE_URL` for conversation writes. Both API and agent worker receive these URLs and their narrowly scoped password files. The old `AGENT_STORE_PATH` SQLite file is not mounted or configured. The `004` Alpaca preparation and `005` private sample tables are included in the ingestion grants.
+The `003` PostgreSQL-store migration uses a read-only market `DATABASE_URL` and a separate `AGENT_DATABASE_URL` for conversation writes. Both API and agent worker receive these URLs and their narrowly scoped password files. The old `AGENT_STORE_PATH` SQLite file is not mounted or configured. The `005` sample tables remain in the versioned schema, but the production ingestion role has no access to them. The application requires a reviewed full S&P 500 catalog and real data source before serving requests.
 
 ## Host inputs and secret files
 
@@ -45,13 +45,14 @@ compose --profile maintenance run --rm bootstrap-grants
 compose --profile maintenance run --rm bootstrap-temporal
 compose up -d temporal
 compose --profile maintenance run --rm bootstrap-namespace
+# Stop here until the full S&P 500 catalog and real source have been reviewed and published.
 compose up -d api agent web
 compose --profile maintenance run --rm verify-pollers
 ```
 
-`bootstrap-db` sets or rotates passwords from the mounted secret files, creates databases with `app_migrator` or `temporal_service` as owner, and removes public database access. `migrate-app` applies `001` through `005` as the application owner. `bootstrap-grants` resets runtime-role table and sequence privileges, then grants the reader only market projections, the agent only its conversation tables and identity sequences, and ingestion only market/catalog/preparation/sample tables plus the selected-bar view. Run `bootstrap-grants` after any future migration that adds runtime objects. The maintenance jobs must finish successfully before the runtime is started. They are not normal startup dependencies and never run automatically on container restart.
+`bootstrap-db` sets or rotates passwords from the mounted secret files, creates databases with `app_migrator` or `temporal_service` as owner, and removes public database access. `migrate-app` applies `001` through `005` as the application owner. `bootstrap-grants` resets runtime-role table and sequence privileges, then grants the reader only market projections, the agent only its conversation tables and identity sequences, and ingestion only full-catalog/market/preparation tables plus the selected-bar view. It revokes any earlier ingestion grants on the `005` sample tables. Run `bootstrap-grants` after any future migration that adds runtime objects. The maintenance jobs must finish successfully before the runtime is started. They are not normal startup dependencies and never run automatically on container restart.
 
-The API keeps `/api/v1/health` for process liveness. `/api/v1/ready` checks read access to the market view, agent-store access, and a Temporal namespace RPC. Compose uses readiness for its API healthcheck and waits for it before starting the web gateway. A failed check returns HTTP 503 without credentials or driver diagnostics. Temporal's own Compose healthcheck only checks its listener; API readiness provides the dependency check.
+The API keeps `/api/v1/health` for process liveness. `/api/v1/ready` checks read access to the market view, agent-store access, and a Temporal namespace RPC. Compose uses readiness for its API healthcheck and waits for it before starting the web gateway. A failed check returns HTTP 503 without credentials or driver diagnostics. Temporal's own Compose healthcheck only checks its listener; API readiness provides the dependency check. All backend services receive `MARKET_EAGLE_RUNTIME=production`; API and agent never receive a private-sample snapshot selector. The matching backend guard rejects synthetic and sample selection in this mode.
 
 `verify-pollers` makes read-only Temporal RPCs. It waits up to one minute for recent (within 60 seconds) workflow and activity polls on `market-eagle-agent`, then fails with the missing queue names. It starts Temporal if necessary but does not start either worker. After collection has been deliberately enabled and its worker started, run `compose --profile maintenance run --rm -e CHECK_COLLECTION=1 verify-pollers` to include `market-backfill`, `market-session`, and `market-catalog`. A successful process start alone does not prove these queues are being polled. This check does not schedule a workflow or call a provider.
 

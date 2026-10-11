@@ -83,7 +83,7 @@ services:
       MARKET_EAGLE_FEED: ${MARKET_EAGLE_FEED:?set reviewed feed}
       MARKET_EAGLE_PRICE_BASIS: ${MARKET_EAGLE_PRICE_BASIS:?set reviewed basis}
       MARKET_EAGLE_EXCHANGE: ${MARKET_EAGLE_EXCHANGE:?set reviewed exchange}
-      MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID: ${MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID:-}
+      MARKET_EAGLE_RUNTIME: production
       MARKET_EAGLE_AGENT_ENABLED: "1"
     secrets:
       - market_reader_pgpass
@@ -136,6 +136,7 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: market-eagle-private
       ALPACA_MIN_REQUEST_INTERVAL_SECONDS: ${ALPACA_MIN_REQUEST_INTERVAL_SECONDS:-1}
+      MARKET_EAGLE_RUNTIME: production
     secrets:
       - app_ingest_pgpass
       - alpaca_key_id
@@ -164,7 +165,7 @@ services:
       MARKET_EAGLE_FEED: ${MARKET_EAGLE_FEED:?set reviewed feed}
       MARKET_EAGLE_PRICE_BASIS: ${MARKET_EAGLE_PRICE_BASIS:?set reviewed basis}
       MARKET_EAGLE_EXCHANGE: ${MARKET_EAGLE_EXCHANGE:?set reviewed exchange}
-      MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID: ${MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID:-}
+      MARKET_EAGLE_RUNTIME: production
       OPENROUTER_MODEL: nvidia/nemotron-3-super-120b-a12b:free
     secrets:
       - market_reader_pgpass
@@ -198,6 +199,7 @@ services:
     environment:
       DATABASE_URL: postgresql://app_migrator@postgres:5432/market_eagle
       PGPASS_SECRET: app_migrator_pgpass
+      MARKET_EAGLE_RUNTIME: production
     secrets:
       - app_migrator_pgpass
     restart: "no"
@@ -210,6 +212,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      MARKET_EAGLE_RUNTIME: production
     secrets:
       - postgres_admin_password
       - temporal_db_password
@@ -227,6 +231,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      MARKET_EAGLE_RUNTIME: production
     secrets:
       - postgres_admin_password
     restart: "no"
