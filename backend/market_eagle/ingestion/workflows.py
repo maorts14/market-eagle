@@ -95,18 +95,22 @@ class SessionRefreshWorkflow:
     async def run(self, request: dict) -> dict:
         stock_ids = request["stock_ids"]
         groups = [stock_ids[index : index + 5] for index in range(0, len(stock_ids), 5)]
-        results = await asyncio.gather(
-            *(
-                workflow.execute_activity(
+        max_in_flight = request.get("max_in_flight", 2)
+        if max_in_flight < 1:
+            raise ValueError("max_in_flight must be positive")
+        semaphore = asyncio.Semaphore(max_in_flight)
+
+        async def run_group(group: list[str]) -> dict:
+            async with semaphore:
+                return await workflow.execute_activity(
                     "collect_group",
                     {**request, "stock_ids": group, "mode": "provisional"},
                     task_queue="market-session",
                     start_to_close_timeout=ACTIVITY_TIMEOUT,
                     retry_policy=RETRY_POLICY,
                 )
-                for group in groups
-            )
-        )
+
+        results = await asyncio.gather(*(run_group(group) for group in groups))
         returned = sum(item["returned"] for item in results)
         rejected = sum(item["rejected"] for item in results)
         observed = [item["observed_at"] for item in results if item["observed_at"]]
