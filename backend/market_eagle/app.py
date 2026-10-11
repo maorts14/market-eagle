@@ -24,6 +24,14 @@ from .analytics.fixture_repository import SyntheticFixtureRepository
 from .analytics.models import AnalyticsRepository
 
 ROOT = Path(__file__).resolve().parents[2]
+PRODUCTION_READINESS_SQL = (
+    Path(__file__).resolve().parent
+    / "analytics"
+    / "helpers"
+    / "db"
+    / "sql"
+    / "production_readiness.sql"
+).read_text(encoding="utf-8")
 
 
 def _check_database(url: str, relation: str) -> None:
@@ -33,6 +41,15 @@ def _check_database(url: str, relation: str) -> None:
         conn.execute(
             sql.SQL("SELECT 1 FROM {} LIMIT 0").format(sql.Identifier(relation))
         )
+
+
+def _check_production_market(url: str, source: str, feed: str) -> None:
+    with psycopg.connect(
+        url, connect_timeout=3, options="-c statement_timeout=3000"
+    ) as conn:
+        row = conn.execute(PRODUCTION_READINESS_SQL, (source, feed)).fetchone()
+        if not row or not row[0]:
+            raise RuntimeError("Reviewed production market catalog is unavailable")
 
 
 def selected_repository() -> AnalyticsRepository:
@@ -128,6 +145,16 @@ def create_app(
                     ),
                     timeout=5,
                 )
+                if os.environ.get("MARKET_EAGLE_RUNTIME") == "production":
+                    await asyncio.wait_for(
+                        asyncio.to_thread(
+                            _check_production_market,
+                            database_url,
+                            os.environ["MARKET_EAGLE_SOURCE"],
+                            os.environ["MARKET_EAGLE_FEED"],
+                        ),
+                        timeout=5,
+                    )
             if enabled:
                 await asyncio.wait_for(
                     asyncio.to_thread(
