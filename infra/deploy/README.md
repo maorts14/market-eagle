@@ -59,10 +59,12 @@ For a dependency-recovery drill on a disposable or approved private deployment, 
 
 ## Configuration and local dry-run
 
-From the repository root, these commands validate the rendering and build images locally; they do not start services or call providers:
+CI runs the private Compose validation and builds both deployable images on every PR to `dev`. The check verifies that collection and maintenance are opt-in, only the web gateway and optional Temporal UI publish loopback ports, each runtime service mounts only its intended secret files, and the frontend is built in API mode. It then smoke-tests packaged backend commands and the web bundle. It uses only `.env.example`; no provider credentials or private market data are required.
+
+From the repository root, these commands run the same validation and build locally; they do not start services or call providers:
 
 ```sh
-docker compose --env-file infra/deploy/.env.example -f infra/deploy/compose.yaml config --quiet
+python infra/deploy/check_compose.py
 docker compose --env-file infra/deploy/.env.example -f infra/deploy/compose.yaml build api web
 ```
 
