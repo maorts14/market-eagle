@@ -67,6 +67,7 @@ def main() -> None:
         command.add_argument("--end", type=date.fromisoformat, required=True)
         if name == "probe":
             command.add_argument("--bars", action="store_true")
+            command.add_argument("--asof", type=date.fromisoformat)
     for name in ("review", "draft", "request", "collect"):
         command = commands.add_parser(name)
         command.add_argument("stage_id")
@@ -102,7 +103,7 @@ def main() -> None:
 
                 observed = {symbol: [] for symbol in args.symbols}
                 comparison = comparison_session(sessions, args.start)
-                symbol_asof = datetime.now(timezone.utc).date()
+                symbol_asof = args.asof or datetime.now(timezone.utc).date()
                 pages = 0
                 with httpx.Client() as client:
                     for payload, _observed_at in historical_pages(

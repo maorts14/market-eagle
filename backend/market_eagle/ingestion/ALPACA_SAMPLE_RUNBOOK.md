@@ -7,13 +7,13 @@ Use an application database intended for this validation, with the repository mi
 ```powershell
 $env:PYTHONPATH = "backend"
 python -m market_eagle.ingestion.migrate
-python -m market_eagle.ingestion.alpaca_sample_cli probe --symbols AAPL AMZN JPM MSFT NVDA --start 2024-10-09 --end 2026-10-08 --bars
 python -m market_eagle.ingestion.alpaca_sample_cli stage --symbols AAPL AMZN JPM MSFT NVDA --start 2024-10-09 --end 2026-10-08
 python -m market_eagle.ingestion.alpaca_sample_cli review STAGE_ID
+python -m market_eagle.ingestion.alpaca_sample_cli probe --symbols AAPL AMZN JPM MSFT NVDA --start 2024-10-09 --end 2026-10-08 --bars --asof STAGE_FETCHED_UTC_DATE
 python -m market_eagle.ingestion.alpaca_sample_cli draft STAGE_ID --output C:/private/alpaca-sample-approval.json
 ```
 
-`probe` reads the bounded active US-equity asset list and trading calendar. `--bars` also reads at most three historical pages for the five symbols, from the preceding comparison session through the requested end. It pins Alpaca's `asof` date and reports the exact missing, unexpected, or duplicate bar dates against the calendar without printing prices. Require `complete: true` and retain the dated probe result privately. Historical requests use an exact exclusive UTC cutoff after the requested end date; a date-only cutoff can enter Alpaca's recent SIP entitlement window and return HTTP 403. `stage` holds the five current asset identities and the calendar; it neither publishes a catalog nor writes prices.
+`probe` reads the bounded active US-equity asset list and trading calendar. `--bars` also reads at most three historical pages for the five symbols, from the preceding comparison session through the requested end. Supply `--asof` with the UTC date of the held stage's `fetched_at`, which will be the collection request's pinned `symbol_asof`; without it, the probe uses today's UTC date. It reports the exact missing, unexpected, or duplicate bar dates against the calendar without printing prices. Require `complete: true` and retain the dated probe result privately. Historical requests use an exact exclusive UTC cutoff after the requested end date; a date-only cutoff can enter Alpaca's recent SIP entitlement window and return HTTP 403. `stage` holds the five current asset identities and the calendar; it neither publishes a catalog nor writes prices.
 
 Review the staged checksum, five asset UUIDs, names, exchanges, separate share lines, date range, and session count. For each stock, use dated issuer or exchange records before the comparison session, within the window, and near its end to establish the common share class, ticker, and venue. Check for known symbol, listing, or share-class changes during the window; resolve any change before approval. Compare these records with the current staged Alpaca asset and the complete, pinned historical bar-date probe. Put specific sources, dates, and findings in each alias's `evidence`, and keep a dated private review memo. The draft leaves reviewer, review note, residual identity assumption, alias start dates, and evidence blank.
 
