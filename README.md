@@ -55,6 +55,14 @@ inference and structured-output behavior require a key-backed check. Live S&P
 500 catalog publication and unrestricted
 market-data display remain gated by the documented provider checks.
 
+After a private five-stock Alpaca sample is reviewed and published, set
+`MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID` in ignored `infra/.env` to its
+published snapshot ID before starting `dev.py api` and `dev.py agent-worker`.
+This explicitly selects the private validation sample for the local app, labels
+it as outside the S&P 500, and leaves `catalog_current` unchanged. Clear the
+setting to return to the fictional development fixture. The sample path does
+not resolve the production return price-basis or data-rights decisions.
+
 The local Compose stack is for development. It contains no provider or model
 credentials and publishes services to host loopback. The first private
 homelab deployment is a later reviewed stage after the application runtime

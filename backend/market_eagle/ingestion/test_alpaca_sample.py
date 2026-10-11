@@ -10,6 +10,10 @@ from uuid import uuid4
 import psycopg
 import pytest
 from psycopg import sql
+from psycopg.conninfo import make_conninfo
+
+from market_eagle.analytics.postgres_repository import PostgresAnalyticsRepository
+from market_eagle.analytics.service import AnalyticsError, AnalyticsService
 
 from .alpaca_preparation import validate_collection_group
 from .alpaca_sample import approve_sample, review_sample, sample_stock_id, stage_sample
@@ -136,6 +140,25 @@ def test_reviewed_sample_publishes_isolated_catalog_and_collection(conn):
         "SELECT source, taxonomy FROM universe_snapshot WHERE snapshot_id = %s",
         (request["snapshot_id"],),
     ).fetchone() == ("alpaca-sample-v1", "sample-unclassified-v1")
+    schema = conn.execute("SELECT current_schema()").fetchone()[0]
+    database_url = (
+        os.environ.get("INGESTION_TEST_DATABASE_URL") or os.environ["DATABASE_URL"]
+    )
+    sample_repository = PostgresAnalyticsRepository(
+        make_conninfo(database_url, options=f"-c search_path={schema},public"),
+        source="alpaca",
+        feed="sip",
+        price_basis="raw",
+        exchange="US_EQUITY",
+        private_sample_snapshot_id=request["snapshot_id"],
+    )
+    sample_result = AnalyticsService(sample_repository).explorer(START, START)
+    assert sample_result["catalog"]["scope"] == "private_five_stock_sample"
+    assert sample_result["catalog"]["tracked_count"] == 5
+    assert sample_result["market"]["eligible_count"] == 0
+    sample_repository.private_sample_snapshot_id = "unreviewed-or-missing"
+    with pytest.raises(AnalyticsError, match="No published catalog"):
+        AnalyticsService(sample_repository).explorer(START, START)
     assert conn.execute("SELECT count(*) FROM universe_member").fetchone()[0] == 5
     assert (
         "rights-unconfirmed"

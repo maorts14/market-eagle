@@ -57,6 +57,7 @@ class AnalyticsDataset:
     price_basis: str
     synthetic: bool
     daily_stats: tuple[DailyStockStats, ...] | None = None
+    catalog_source: str = ""
 
 
 class AnalyticsRepository(Protocol):

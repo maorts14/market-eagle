@@ -93,7 +93,7 @@ export function TurnCard({ turn }: { turn: AgentTurn }) {
     <div className="agent-question"><span>Question</span><p>{turn.question}</p></div>
     {activeStatuses.has(turn.status) && <div className="agent-progress" role="status"><span className="agent-pulse" aria-hidden="true" />{turn.status === 'cancel_requested' ? 'Stopping this turn…' : 'Analysis in progress. You can leave and return to this conversation.'}</div>}
     {result && <div className="agent-answer">
-      <div className="agent-result-heading"><span>Verified calculation</span>{result.data.synthetic && <Badge variant="outline">SYNTHETIC</Badge>}</div>
+      <div className="agent-result-heading"><span>Verified calculation</span>{result.data.synthetic && <Badge variant="outline">SYNTHETIC</Badge>}{result.catalog.scope === 'private_five_stock_sample' && <Badge variant="outline">PRIVATE FIVE-STOCK SAMPLE · NOT S&amp;P 500</Badge>}</div>
       {result.rows.length > 1 ? <div className="agent-ranked-results">
         <h4>Ranked results</h4>
         <Table aria-label="Verified ranked results" className="agent-ranking-table">

@@ -28,7 +28,7 @@ export type TrustedResult = {
   metric_version: string
   requested_window: { start: string; end: string }
   resolved_window: { comparison_session: string | null; first_session: string; last_session: string }
-  catalog: { snapshot_id: string; as_of: string; tracked_count: number }
+  catalog: { snapshot_id: string; as_of: string; tracked_count: number; scope?: 'private_five_stock_sample' }
   data: { source: string; feed: string; price_basis: string; as_of: string | null; as_of_kind: 'provider' | 'fetched' | 'mixed' | null; provisional: boolean; synthetic: boolean; return_rankings_trusted: boolean }
   market: { eligible_count: number; excluded_count: number; return: number | null }
   eligible_count: number

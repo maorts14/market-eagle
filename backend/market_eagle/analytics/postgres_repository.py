@@ -55,12 +55,21 @@ class PostgresAnalyticsRepository:
         price_basis: str,
         exchange: str,
         statement_timeout_ms: int = 30_000,
+        private_sample_snapshot_id: str | None = None,
     ) -> None:
         self.database_url = database_url
         self.source = source
         self.feed = feed
         self.price_basis = price_basis
         self.exchange = exchange
+        self.private_sample_snapshot_id = private_sample_snapshot_id
+        if private_sample_snapshot_id and (source, feed, price_basis, exchange) != (
+            "alpaca",
+            "sip",
+            "raw",
+            "US_EQUITY",
+        ):
+            raise ValueError("private sample requires alpaca/sip/raw US equity data")
         if statement_timeout_ms < 1:
             raise ValueError("statement timeout must be positive")
         self.statement_timeout_ms = statement_timeout_ms
@@ -90,12 +99,21 @@ class PostgresAnalyticsRepository:
                 "SELECT set_config('statement_timeout', %s, true)",
                 (str(self.statement_timeout_ms),),
             )
-            snapshot = conn.execute(
-                """SELECT s.snapshot_id, s.as_of, s.published_at
+            if self.private_sample_snapshot_id:
+                snapshot = conn.execute(
+                    """SELECT snapshot_id, source, as_of, published_at
+                       FROM universe_snapshot
+                       WHERE snapshot_id = %s AND source = 'alpaca-sample-v1'
+                         AND validation_state = 'published'""",
+                    (self.private_sample_snapshot_id,),
+                ).fetchone()
+            else:
+                snapshot = conn.execute(
+                    """SELECT s.snapshot_id, s.source, s.as_of, s.published_at
                        FROM catalog_current c
                        JOIN universe_snapshot s ON s.snapshot_id = c.snapshot_id
                        WHERE c.singleton AND s.validation_state = 'published'"""
-            ).fetchone()
+                ).fetchone()
             if snapshot is None:
                 return AnalyticsDataset(
                     snapshot_id="",
@@ -242,4 +260,5 @@ class PostgresAnalyticsRepository:
             price_basis=self.price_basis,
             synthetic=bool(source_row and source_row["synthetic"]),
             daily_stats=daily_stats,
+            catalog_source=snapshot["source"],
         )

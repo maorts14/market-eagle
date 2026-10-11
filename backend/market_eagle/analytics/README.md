@@ -11,6 +11,12 @@ basis, the calendar sessions through `end`, and selected accepted bars for the
 window plus the session immediately preceding its first session when available.
 This read must pin a consistent snapshot of the catalog and selected bar revisions. Fetch bars
 for all tracked stock IDs in a set-based query; do not issue one query per stock.
+For a private five-stock Alpaca validation run, set
+`MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID` to the published
+`alpaca-sample-v1-...` snapshot ID and select `alpaca/sip/raw` with exchange
+`US_EQUITY`. This explicit read-only selection never changes `catalog_current`.
+It refuses a missing, unpublished, or non-sample snapshot and labels the result
+`private_five_stock_sample`, outside S&P 500 membership.
 The service makes exactly one repository call per explorer or typed request and
 performs no writes. A slow batch read delays explorer page load and agent turns.
 

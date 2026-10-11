@@ -306,6 +306,7 @@ def backend_checks(*, integration: bool) -> None:
         environment["MARKET_EAGLE_FEED"] = "fictional"
         environment["MARKET_EAGLE_PRICE_BASIS"] = "synthetic_raw"
         environment["MARKET_EAGLE_EXCHANGE"] = "SYNTHETIC"
+        environment.pop("MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID", None)
         environment["PYTHONPATH"] = (
             str(BACKEND) + os.pathsep + environment.get("PYTHONPATH", "")
         )
@@ -330,6 +331,22 @@ def backend_checks(*, integration: bool) -> None:
         )
 
 
+def select_local_market(environment: dict[str, str], values: dict[str, str]) -> None:
+    sample_snapshot = values.get("MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID")
+    if sample_snapshot:
+        environment["MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID"] = sample_snapshot
+        environment["MARKET_EAGLE_SOURCE"] = "alpaca"
+        environment["MARKET_EAGLE_FEED"] = "sip"
+        environment["MARKET_EAGLE_PRICE_BASIS"] = "raw"
+        environment["MARKET_EAGLE_EXCHANGE"] = "US_EQUITY"
+    else:
+        environment.pop("MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID", None)
+        environment["MARKET_EAGLE_SOURCE"] = "synthetic-v1"
+        environment["MARKET_EAGLE_FEED"] = "fictional"
+        environment["MARKET_EAGLE_PRICE_BASIS"] = "synthetic_raw"
+        environment["MARKET_EAGLE_EXCHANGE"] = "SYNTHETIC"
+
+
 def serve_api() -> None:
     environment = os.environ.copy()
     for key in (
@@ -340,10 +357,7 @@ def serve_api() -> None:
     ):
         environment.pop(key, None)
     environment["DATABASE_URL"] = readonly_database_url()
-    environment["MARKET_EAGLE_SOURCE"] = "synthetic-v1"
-    environment["MARKET_EAGLE_FEED"] = "fictional"
-    environment["MARKET_EAGLE_PRICE_BASIS"] = "synthetic_raw"
-    environment["MARKET_EAGLE_EXCHANGE"] = "SYNTHETIC"
+    select_local_market(environment, local_env())
     environment["MARKET_EAGLE_AGENT_ENABLED"] = "1"
     environment["AGENT_DATABASE_URL"] = agent_database_url()
     environment["TEMPORAL_ADDRESS"] = "localhost:7233"
@@ -370,10 +384,7 @@ def serve_agent_worker() -> None:
     environment = os.environ.copy()
     values = local_env()
     environment["DATABASE_URL"] = readonly_database_url()
-    environment["MARKET_EAGLE_SOURCE"] = "synthetic-v1"
-    environment["MARKET_EAGLE_FEED"] = "fictional"
-    environment["MARKET_EAGLE_PRICE_BASIS"] = "synthetic_raw"
-    environment["MARKET_EAGLE_EXCHANGE"] = "SYNTHETIC"
+    select_local_market(environment, values)
     environment["AGENT_DATABASE_URL"] = agent_database_url()
     environment["TEMPORAL_ADDRESS"] = "localhost:7233"
     for key in ("OPENROUTER_API_KEY", "OPENROUTER_MODEL"):
