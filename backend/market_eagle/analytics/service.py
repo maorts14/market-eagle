@@ -12,6 +12,8 @@ from .models import (
     AnalyticsDataset,
     AnalyticsRepository,
     Bar,
+    DailyCondition,
+    DailyStockStats,
     DateWindow,
 )
 
@@ -66,11 +68,20 @@ class AnalyticsService:
         self.repository = repository
 
     def _context(
-        self, window: DateWindow, *, require_comparison: bool = True
+        self,
+        window: DateWindow,
+        *,
+        require_comparison: bool = True,
+        daily_conditions: list[DailyCondition] | None = None,
     ) -> tuple[
         AnalyticsDataset, dict[str, Any], dict[tuple[str, date], Bar], list[date]
     ]:
-        dataset = self.repository.load(window.start, window.end)
+        daily_loader = getattr(self.repository, "load_with_daily_stats", None)
+        dataset = (
+            daily_loader(window.start, window.end, daily_conditions)
+            if daily_conditions is not None and daily_loader is not None
+            else self.repository.load(window.start, window.end)
+        )
         if not dataset.members:
             raise AnalyticsError(
                 "no_published_catalog", "No published catalog is available", 404
@@ -104,9 +115,18 @@ class AnalyticsService:
         return dataset, resolved, selected, included
 
     def _calculate(
-        self, window: DateWindow
-    ) -> tuple[dict[str, Any], dict[tuple[str, date], Bar], list[date]]:
-        dataset, resolved, selected, sessions = self._context(window)
+        self,
+        window: DateWindow,
+        daily_conditions: list[DailyCondition] | None = None,
+    ) -> tuple[
+        dict[str, Any],
+        dict[tuple[str, date], Bar],
+        list[date],
+        tuple[DailyStockStats, ...] | None,
+    ]:
+        dataset, resolved, selected, sessions = self._context(
+            window, daily_conditions=daily_conditions
+        )
         comparison, final = resolved["comparison_session"], resolved["last_session"]
         stock_rows: list[dict[str, Any]] = []
         excluded: list[dict[str, str]] = []
@@ -237,27 +257,46 @@ class AnalyticsService:
             "exclusions": excluded,
             "calculated_at": datetime.now(timezone.utc),
         }
-        return result, selected, sessions
+        return result, selected, sessions, dataset.daily_stats
 
     def _frequency_calculate(
-        self, window: DateWindow
+        self, window: DateWindow, daily_conditions: list[DailyCondition]
     ) -> tuple[
-        dict[str, Any], list[dict[str, Any]], dict[tuple[str, date], Bar], list[date]
+        dict[str, Any],
+        list[dict[str, Any]],
+        dict[tuple[str, date], Bar],
+        list[date],
+        tuple[DailyStockStats, ...] | None,
     ]:
         dataset, resolved, selected, sessions = self._context(
-            window, require_comparison=False
+            window, require_comparison=False, daily_conditions=daily_conditions
+        )
+        stats_by_stock = (
+            {item.stock_id: item for item in dataset.daily_stats}
+            if dataset.daily_stats is not None
+            else None
         )
         stock_rows: list[dict[str, Any]] = []
         excluded: list[dict[str, str]] = []
         usable_bars: list[Bar] = []
         for member in dataset.members:
-            observed = [
-                selected[(member.stock_id, day)]
-                for day in sessions
-                if (member.stock_id, day) in selected
-            ]
-            usable = [bar for bar in observed if bar.close > 0 and bar.volume >= 0]
-            if not usable:
+            usable = (
+                None
+                if stats_by_stock is not None
+                else [
+                    bar
+                    for day in sessions
+                    if (bar := selected.get((member.stock_id, day))) is not None
+                    and bar.close > 0
+                    and bar.volume >= 0
+                ]
+            )
+            observed_count = (
+                stats_by_stock[member.stock_id].observed_usable_days
+                if stats_by_stock is not None
+                else len(usable)
+            )
+            if not observed_count:
                 excluded.append(
                     {
                         "stock_id": member.stock_id,
@@ -266,7 +305,8 @@ class AnalyticsService:
                     }
                 )
                 continue
-            usable_bars.extend(usable)
+            if usable is not None:
+                usable_bars.extend(usable)
             stock_rows.append(
                 {
                     "stock_id": member.stock_id,
@@ -280,7 +320,11 @@ class AnalyticsService:
                     "listed_from": member.listed_from,
                 }
             )
-        as_of_kinds = {bar.as_of_kind for bar in usable_bars}
+        as_of_kinds = (
+            set().union(*(item.as_of_kinds for item in dataset.daily_stats))
+            if dataset.daily_stats is not None
+            else {bar.as_of_kind for bar in usable_bars}
+        )
         result = {
             "metric_version": "daily-frequency-v1",
             "requested_window": window.model_dump(),
@@ -295,13 +339,28 @@ class AnalyticsService:
                 "source": dataset.source,
                 "feed": dataset.feed,
                 "price_basis": dataset.price_basis,
-                "as_of": min((bar.provider_as_of for bar in usable_bars), default=None),
+                "as_of": (
+                    min(
+                        (
+                            item.data_as_of
+                            for item in dataset.daily_stats
+                            if item.data_as_of is not None
+                        ),
+                        default=None,
+                    )
+                    if dataset.daily_stats is not None
+                    else min((bar.provider_as_of for bar in usable_bars), default=None)
+                ),
                 "as_of_kind": next(iter(as_of_kinds))
                 if len(as_of_kinds) == 1
                 else "mixed"
                 if as_of_kinds
                 else None,
-                "provisional": any(bar.status == "provisional" for bar in usable_bars),
+                "provisional": (
+                    any(item.provisional for item in dataset.daily_stats)
+                    if dataset.daily_stats is not None
+                    else any(bar.status == "provisional" for bar in usable_bars)
+                ),
                 "synthetic": dataset.synthetic,
                 "return_rankings_trusted": False,
             },
@@ -313,7 +372,7 @@ class AnalyticsService:
             "exclusions": excluded,
             "calculated_at": datetime.now(timezone.utc),
         }
-        return result, stock_rows, selected, sessions
+        return result, stock_rows, selected, sessions, dataset.daily_stats
 
     def explorer(self, start: date, end: date) -> dict[str, Any]:
         try:
@@ -322,7 +381,7 @@ class AnalyticsService:
             raise AnalyticsError(
                 "invalid_range", "start must be on or before end", 400
             ) from error
-        result, _, _ = self._calculate(window)
+        result, _, _, _ = self._calculate(window)
         for sector in result["sectors"]:
             for stock in sector["stocks"]:
                 stock.pop("sector_code")
@@ -341,7 +400,9 @@ class AnalyticsService:
             return_measures.intersection(request.measures)
         )
         if requires_return:
-            result, selected, sessions = self._calculate(request.window)
+            result, selected, sessions, daily_stats = self._calculate(
+                request.window, request.daily_conditions
+            )
             stock_rows = [
                 dict(
                     stock,
@@ -353,32 +414,46 @@ class AnalyticsService:
                 for stock in sector["stocks"]
             ]
         else:
-            result, stock_rows, selected, sessions = self._frequency_calculate(
-                request.window
+            result, stock_rows, selected, sessions, daily_stats = (
+                self._frequency_calculate(request.window, request.daily_conditions)
             )
+        stats_by_stock = (
+            {item.stock_id: item for item in daily_stats}
+            if daily_stats is not None
+            else None
+        )
         filtered = []
         for row in stock_rows:
             if not all(
                 _compare(row[p.field], p.operator, p.value) for p in request.predicates
             ):
                 continue
-            observed = [
-                selected[(row["stock_id"], day)]
-                for day in sessions
-                if (row["stock_id"], day) in selected
-            ]
-            usable = [bar for bar in observed if bar.close > 0 and bar.volume >= 0]
-            qualifying = 0
-            provenance: set[str] = set()
-            for bar in usable:
-                matches = []
-                for condition in request.daily_conditions:
-                    value, origin = _daily_value(bar, condition.field)
-                    if origin:
-                        provenance.add(origin)
-                    matches.append(_compare(value, condition.operator, condition.value))
-                qualifying += bool(matches) and all(matches)
-            fraction = Decimal(qualifying) / len(usable) if usable else None
+            if stats_by_stock is not None:
+                stock_stats = stats_by_stock[row["stock_id"]]
+                observed_count = stock_stats.observed_usable_days
+                qualifying = stock_stats.qualifying_days
+                provenance = set(stock_stats.dollar_volume_inputs)
+            else:
+                usable = [
+                    selected[(row["stock_id"], day)]
+                    for day in sessions
+                    if (row["stock_id"], day) in selected
+                ]
+                usable = [bar for bar in usable if bar.close > 0 and bar.volume >= 0]
+                observed_count = len(usable)
+                qualifying = 0
+                provenance: set[str] = set()
+                for bar in usable:
+                    matches = []
+                    for condition in request.daily_conditions:
+                        value, origin = _daily_value(bar, condition.field)
+                        if origin:
+                            provenance.add(origin)
+                        matches.append(
+                            _compare(value, condition.operator, condition.value)
+                        )
+                    qualifying += bool(matches) and all(matches)
+            fraction = Decimal(qualifying) / observed_count if observed_count else None
             if request.reduction:
                 metric = (
                     Decimal(qualifying)
@@ -404,14 +479,14 @@ class AnalyticsService:
                     "sector_return": row["sector_return"],
                     "market_return": row["market_return"],
                     "qualifying_days": qualifying if request.daily_conditions else None,
-                    "observed_usable_days": len(usable),
+                    "observed_usable_days": observed_count,
                     "qualifying_fraction": fraction
                     if request.daily_conditions
                     else None,
                     "requested_sessions": len(sessions),
                     "known_listing_sessions": listed_sessions,
-                    "requested_coverage": Decimal(len(usable)) / len(sessions),
-                    "known_listing_coverage": Decimal(len(usable)) / listed_sessions
+                    "requested_coverage": Decimal(observed_count) / len(sessions),
+                    "known_listing_coverage": Decimal(observed_count) / listed_sessions
                     if listed_sessions
                     else None,
                     "dollar_volume_inputs": sorted(provenance),

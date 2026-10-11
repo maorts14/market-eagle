@@ -34,6 +34,17 @@ class Bar:
 
 
 @dataclass(frozen=True)
+class DailyStockStats:
+    stock_id: str
+    observed_usable_days: int
+    qualifying_days: int
+    dollar_volume_inputs: tuple[str, ...]
+    data_as_of: datetime | None
+    as_of_kinds: frozenset[str]
+    provisional: bool
+
+
+@dataclass(frozen=True)
 class AnalyticsDataset:
     snapshot_id: str
     catalog_as_of: date
@@ -45,6 +56,7 @@ class AnalyticsDataset:
     feed: str
     price_basis: str
     synthetic: bool
+    daily_stats: tuple[DailyStockStats, ...] | None = None
 
 
 class AnalyticsRepository(Protocol):

@@ -3,11 +3,46 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
 
-from .models import AnalyticsDataset, Bar, CatalogMember
+from .models import (
+    AnalyticsDataset,
+    Bar,
+    CatalogMember,
+    DailyCondition,
+    DailyStockStats,
+)
+
+SQL_DIR = Path(__file__).resolve().parent / "helpers" / "db" / "sql"
+ENDPOINT_SQL = (SQL_DIR / "explorer_endpoints.sql").read_text(encoding="utf-8")
+FREQUENCY_SQL = (SQL_DIR / "daily_frequency.sql").read_text(encoding="utf-8")
+
+DAILY_FIELDS = {
+    "close": "b.close",
+    "volume": "b.volume",
+    "daily_dollar_volume": (
+        "coalesce(b.traded_notional, b.volume * b.vwap, b.volume * b.close)"
+    ),
+}
+COMPARISONS = {"=", "<", "<=", ">", ">="}
+
+
+def daily_predicate(conditions: list[DailyCondition]) -> tuple[str, list]:
+    clauses = []
+    values = []
+    for condition in conditions:
+        field = DAILY_FIELDS[condition.field]
+        if condition.operator == "in":
+            clauses.append(f"{field} = ANY(%s::numeric[])")
+        else:
+            if condition.operator not in COMPARISONS:
+                raise ValueError("unsupported daily comparison")
+            clauses.append(f"{field} {condition.operator} %s")
+        values.append(condition.value)
+    return (" AND ".join(clauses) if clauses else "false"), values
 
 
 class PostgresAnalyticsRepository:
@@ -31,6 +66,19 @@ class PostgresAnalyticsRepository:
         self.statement_timeout_ms = statement_timeout_ms
 
     def load(self, start: date, end: date) -> AnalyticsDataset:
+        return self._load(start, end, None)
+
+    def load_with_daily_stats(
+        self, start: date, end: date, daily_conditions: list[DailyCondition]
+    ) -> AnalyticsDataset:
+        return self._load(start, end, daily_conditions)
+
+    def _load(
+        self,
+        start: date,
+        end: date,
+        daily_conditions: list[DailyCondition] | None = None,
+    ) -> AnalyticsDataset:
         with (
             psycopg.connect(
                 self.database_url, autocommit=True, row_factory=dict_row
@@ -85,9 +133,11 @@ class PostgresAnalyticsRepository:
             ).fetchall()
             sessions = conn.execute(
                 """SELECT session_date FROM trading_session
-                       WHERE exchange = %s AND session_date <= %s
+                       WHERE exchange = %s AND (session_date BETWEEN %s AND %s
+                         OR session_date = (SELECT max(session_date) FROM trading_session
+                                            WHERE exchange = %s AND session_date < %s))
                        ORDER BY session_date""",
-                (self.exchange, end),
+                (self.exchange, start, end, self.exchange, start),
             ).fetchall()
             comparison = next(
                 (
@@ -95,27 +145,77 @@ class PostgresAnalyticsRepository:
                     for row in reversed(sessions)
                     if row["session_date"] < start
                 ),
-                start,
+                None,
             )
-            bars = conn.execute(
-                """SELECT b.stock_id, b.session_date, b.close, b.volume, b.vwap,
-                              b.traded_notional, b.provider_as_of, b.as_of_kind,
-                              b.observation_status
-                       FROM selected_daily_bar b
-                       JOIN universe_member m ON m.stock_id = b.stock_id
-                       WHERE m.snapshot_id = %s AND b.source = %s AND b.feed = %s
-                         AND b.price_basis = %s
-                         AND b.session_date >= %s AND b.session_date <= %s
-                       ORDER BY b.stock_id, b.session_date""",
+            final = next(
                 (
-                    snapshot["snapshot_id"],
-                    self.source,
-                    self.feed,
-                    self.price_basis,
-                    comparison,
-                    end,
+                    row["session_date"]
+                    for row in reversed(sessions)
+                    if start <= row["session_date"] <= end
                 ),
-            ).fetchall()
+                None,
+            )
+            endpoint_dates = [day for day in (comparison, final) if day is not None]
+            bars = (
+                conn.execute(
+                    ENDPOINT_SQL,
+                    (
+                        snapshot["snapshot_id"],
+                        self.source,
+                        self.feed,
+                        self.price_basis,
+                        endpoint_dates,
+                    ),
+                ).fetchall()
+                if endpoint_dates
+                else []
+            )
+            daily_stats = None
+            if daily_conditions is not None:
+                predicate, values = daily_predicate(daily_conditions)
+                rows = conn.execute(
+                    FREQUENCY_SQL.replace("/* DAILY_CONDITION */", predicate),
+                    (
+                        *values,
+                        self.source,
+                        self.feed,
+                        self.price_basis,
+                        start,
+                        end,
+                        snapshot["snapshot_id"],
+                    ),
+                ).fetchall()
+                dollar_condition = any(
+                    condition.field == "daily_dollar_volume"
+                    for condition in daily_conditions
+                )
+                daily_stats = tuple(
+                    DailyStockStats(
+                        stock_id=row["stock_id"],
+                        observed_usable_days=row["observed_usable_days"],
+                        qualifying_days=row["qualifying_days"],
+                        dollar_volume_inputs=tuple(
+                            name
+                            for present, name in (
+                                (row["has_reported_notional"], "reported_notional"),
+                                (row["has_vwap_estimate"], "volume_x_vwap_estimate"),
+                                (row["has_close_estimate"], "volume_x_close_estimate"),
+                            )
+                            if dollar_condition and present
+                        ),
+                        data_as_of=row["data_as_of"],
+                        as_of_kinds=frozenset(
+                            kind
+                            for present, kind in (
+                                (row["has_provider_as_of"], "provider"),
+                                (row["has_fetched_as_of"], "fetched"),
+                            )
+                            if present
+                        ),
+                        provisional=bool(row["provisional"]),
+                    )
+                    for row in rows
+                )
 
         return AnalyticsDataset(
             snapshot_id=snapshot["snapshot_id"],
@@ -141,4 +241,5 @@ class PostgresAnalyticsRepository:
             feed=self.feed if source_row else "",
             price_basis=self.price_basis,
             synthetic=bool(source_row and source_row["synthetic"]),
+            daily_stats=daily_stats,
         )
