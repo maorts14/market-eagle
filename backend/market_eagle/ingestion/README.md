@@ -27,12 +27,13 @@ python -m market_eagle.ingestion.migrate
 python -m market_eagle.ingestion.fmp_catalog probe
 python -m market_eagle.ingestion.fmp_catalog stage
 python -m market_eagle.ingestion.fmp_catalog review STAGE_ID
+python -m market_eagle.ingestion.fmp_catalog draft STAGE_ID --output C:/private/fmp-approval.json
 python -m market_eagle.ingestion.fmp_catalog publish path/to/approval.json
 ```
 
 `probe` makes one 20-second request, caps the response at 2 MB and 700 rows, and prints only counts, checksum, fetch time, and rate headers. `stage` stores normalized rows in a held candidate. A response below 450 rows can be inspected but cannot be published. Duplicate symbols, missing sectors, and malformed response shapes fail before staging. The Temporal catalog activity accepts `{"source": "fmp-sp500"}` and returns a held stage ID; it never publishes FMP membership.
 
-Inspect `review` for additions, removals, sector changes, and unresolved symbols. FMP aliases are reused only when an exact dated FMP mapping already exists. The endpoint does not provide exchange identity, so approved aliases use `UNVERIFIED` until a separate mapping is checked. For each unresolved symbol, a reviewer must choose an existing `stock_id` or the literal `"new"`. Even two symbols with one CIK require separate stock IDs. Publication requires a checksum-bound approval file:
+Inspect `review` for additions, removals, sector changes, and unresolved symbols. `draft` reads the held stage and writes a checksum-bound approval file outside the repository; it makes no provider request or database change. Reviewer and review note are blank, and every unresolved symbol has a blank decision. FMP aliases are reused only when an exact dated FMP mapping already exists. The endpoint does not provide exchange identity, so approved aliases use `UNVERIFIED` until a separate mapping is checked. For each unresolved symbol, a reviewer must choose an existing `stock_id` or the literal `"new"`. Even two symbols with one CIK require separate stock IDs. Publication requires a checksum-bound approval file:
 
 ```json
 {

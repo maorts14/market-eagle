@@ -12,6 +12,7 @@ import pytest
 from psycopg import sql
 
 from .fmp import FmpFetch, checksum_rows, normalize_constituents
+from .fmp_catalog import approval_draft
 from .fmp_stage import publish_reviewed_stage, review_stage, stage_constituents
 
 pytestmark = pytest.mark.synthetic_integration
@@ -70,6 +71,13 @@ def test_manual_gate_and_stable_share_line_identity(conn):
     first = stage_constituents(conn, _fetch(), minimum_count=2)
     report = review_stage(conn, first["stage_id"])
     assert report["unresolved_symbols"] == ["ALFA", "ALFB"]
+    assert approval_draft(report) == {
+        "stage_id": first["stage_id"],
+        "checksum": first["checksum"],
+        "reviewer": "",
+        "review_note": "",
+        "decisions": {"ALFA": "", "ALFB": ""},
+    }
     assert report["sector_taxonomy"] == "fmp-sector-unverified-v1"
     assert report["provider_publication_time"] is None
     with conn.cursor() as cur:
@@ -106,6 +114,7 @@ def test_manual_gate_and_stable_share_line_identity(conn):
     second = stage_constituents(conn, _fetch("Industrials"), minimum_count=2)
     report = review_stage(conn, second["stage_id"])
     assert report["unresolved_symbols"] == []
+    assert approval_draft(report)["decisions"] == {}
     assert report["sector_changes"] == ["ALFA", "ALFB"]
     next_snapshot = publish_reviewed_stage(
         conn,

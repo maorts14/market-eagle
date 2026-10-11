@@ -14,6 +14,17 @@ from .fmp import FmpRequestError, FmpTransportError, fetch_constituents
 from .fmp_stage import publish_reviewed_stage, review_stage, stage_constituents
 
 
+def approval_draft(report: dict) -> dict:
+    """Leave unresolved share lines and reviewer attestation for manual review."""
+    return {
+        "stage_id": report["stage_id"],
+        "checksum": report["checksum"],
+        "reviewer": "",
+        "review_note": "",
+        "decisions": {symbol: "" for symbol in report["unresolved_symbols"]},
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -27,6 +38,11 @@ def main() -> None:
         "review", help="show staged changes and identity gaps"
     )
     review.add_argument("stage_id")
+    draft = subcommands.add_parser(
+        "draft", help="write an unsigned approval draft for a held stage"
+    )
+    draft.add_argument("stage_id")
+    draft.add_argument("--output", type=Path, required=True)
     publish = subcommands.add_parser(
         "publish", help="publish with an explicit reviewed approval file"
     )
@@ -60,8 +76,19 @@ def main() -> None:
     with psycopg.connect(database_url) as conn:
         if args.command == "stage":
             result.update(stage_constituents(conn, fetched))
-        elif args.command == "review":
+        elif args.command in ("review", "draft"):
             result = review_stage(conn, args.stage_id)
+            if args.command == "draft":
+                if result["status"] != "held":
+                    raise ValueError("approval draft requires a held catalog stage")
+                draft = approval_draft(result)
+                args.output.write_text(
+                    json.dumps(draft, indent=2) + "\n", encoding="utf-8"
+                )
+                result = {
+                    "draft_written": str(args.output),
+                    "unresolved_symbol_count": len(draft["decisions"]),
+                }
         else:
             approval = json.loads(args.approval_file.read_text(encoding="utf-8"))
             snapshot_id = publish_reviewed_stage(
