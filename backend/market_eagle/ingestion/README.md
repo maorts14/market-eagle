@@ -89,6 +89,14 @@ python -m market_eagle.ingestion.alpaca_collect approve C:/private/alpaca-approv
 python -m market_eagle.ingestion.alpaca_collect request PREPARATION_ID
 ```
 
+After inspecting the pinned request, an operator can explicitly start one backfill against the approved preparation and current reviewed FMP catalog. Set `TEMPORAL_ADDRESS` and `TEMPORAL_NAMESPACE` for the target worker environment (defaults: `localhost:7233` and `default`), then run:
+
+```powershell
+python -m market_eagle.ingestion.alpaca_collect start PREPARATION_ID
+```
+
+`start` rereads the approved request from the database and sends it unchanged to `HistoricalBackfillWorkflow` on `market-backfill`. The workflow ID is the preparation's stable `collection_run_id`; retries attach to an open execution or report the existing closed execution rather than start another while Temporal retains that ID. It returns workflow ID, run ID, status, snapshot ID, and stock count. The worker still checks each five-stock group before any Alpaca request. This command has no schedule; do not invoke it before the reviewed full catalog, alias evidence, account usage rights, and provider budget are cleared.
+
 The worker requires the approved preparation ID and checks every five-stock group before contacting Alpaca. Stock aliases keep their reviewed NYSE/NASDAQ/etc. exchange; daily bars use the separate `US_EQUITY` trading calendar. A comparison close or session missing from the approved calendar prevents preparation. This is a private collection path, not clearance for redistributed prices or a trusted live return basis.
 
 The lead's 2026-10-08 read-only paper-account probe confirmed five-year raw SIP daily bars for five symbols (1,257 each, one page), a current-day historical `1Day` bar, and a `delayed_sip` snapshot `dailyBar`. `SessionRefreshWorkflow` uses the observed current-day historical `1Day` path with a 15-minute cutoff, marks its observations provisional, and reports returned count. It does not mix the `delayed_sip` snapshot feed into SIP history. Account rights for wider display or redistribution and the final scheduling/rate policy remain unresolved.
