@@ -16,6 +16,10 @@ from .fmp_stage import publish_reviewed_stage, review_stage, stage_constituents
 
 def approval_draft(report: dict) -> dict:
     """Leave unresolved share lines and reviewer attestation for manual review."""
+    if report["status"] != "held":
+        raise ValueError("approval draft requires a held catalog stage")
+    if report["validation_issues"] or report["row_count"] < report["minimum_count"]:
+        raise ValueError("catalog stage failed validation and cannot be published")
     return {
         "stage_id": report["stage_id"],
         "checksum": report["checksum"],
@@ -79,8 +83,6 @@ def main() -> None:
         elif args.command in ("review", "draft"):
             result = review_stage(conn, args.stage_id)
             if args.command == "draft":
-                if result["status"] != "held":
-                    raise ValueError("approval draft requires a held catalog stage")
                 draft = approval_draft(result)
                 args.output.write_text(
                     json.dumps(draft, indent=2) + "\n", encoding="utf-8"

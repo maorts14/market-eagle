@@ -163,7 +163,10 @@ def test_manual_gate_and_stable_share_line_identity(conn):
 
 def test_partial_candidate_stays_held(conn):
     candidate = stage_constituents(conn, _fetch(symbols=("ALFA",)), minimum_count=2)
-    assert review_stage(conn, candidate["stage_id"])["validation_issues"]
+    report = review_stage(conn, candidate["stage_id"])
+    assert report["validation_issues"]
+    with pytest.raises(ValueError, match="failed validation"):
+        approval_draft(report)
     with pytest.raises(ValueError, match="failed validation"):
         publish_reviewed_stage(
             conn,
