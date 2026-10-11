@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import { ArrowUp, ChevronDown, CircleStop, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import {
   agent, agentMode, AgentApiError, exampleQuestion, followUpQuestion,
-  type AgentConversation, type AgentConversationSummary, type AgentRow, type AgentTurn, type TrustedResult,
+  type AgentConversation, type AgentConversationSummary, type AgentRow, type AgentSortMeasure, type AgentTurn, type TrustedResult,
 } from '@/lib/agent'
 import './AgentResearch.css'
 
@@ -15,6 +16,12 @@ function percent(value: number | string | null | undefined, signed = false) {
   if (value == null) return '—'
   const numeric = Number(value)
   return `${signed && numeric > 0 ? '+' : ''}${(numeric * 100).toFixed(1)}%`
+}
+
+function points(value: number | string | null | undefined) {
+  if (value == null) return '—'
+  const numeric = Number(value)
+  return `${numeric > 0 ? '+' : ''}${(numeric * 100).toFixed(1)} pp`
 }
 
 function shortDate(value: string) {
@@ -30,9 +37,17 @@ function rowTitle(row: AgentRow) {
   return row.ticker ?? row.sector_code ?? 'Result'
 }
 
-function resultMetric(row: AgentRow) {
+function resultMetric(row: AgentRow, sortMeasure?: AgentSortMeasure) {
+  switch (sortMeasure) {
+    case 'period_return': return { label: 'Period return', value: percent(row.period_return, true) }
+    case 'excess_vs_sector': return { label: 'Excess vs sector', value: points(row.excess_vs_sector) }
+    case 'breadth': return { label: 'Sector breadth', value: percent(row.breadth) }
+    case 'sector_return': return { label: 'Sector return', value: percent(row.sector_return, true) }
+    case 'qualifying_fraction': return { label: 'Qualifying share', value: percent(row.qualifying_fraction) }
+    case 'qualifying_days': return { label: 'Qualifying days', value: row.qualifying_days == null ? '—' : `${row.qualifying_days} days` }
+  }
   if (row.period_return != null) return { label: 'Period return', value: percent(row.period_return, true) }
-  if (row.qualifying_fraction != null) return { label: 'Qualifying days', value: percent(row.qualifying_fraction) }
+  if (row.qualifying_fraction != null) return { label: 'Qualifying share', value: percent(row.qualifying_fraction) }
   if (row.breadth != null) return { label: 'Sector breadth', value: percent(row.breadth) }
   return { label: 'Sector return', value: percent(row.sector_return, true) }
 }
@@ -56,7 +71,8 @@ function Evidence({ result }: { result: TrustedResult }) {
       {result.rows.length > 0 && <div className="agent-evidence-rows"><h4>Returned rows</h4>{result.rows.map((row, index) => <dl className="agent-evidence-row" key={`${rowTitle(row)}-${index}`}>
         <div><dt>Stock / sector</dt><dd>{rowTitle(row)}{row.name ? ` · ${row.name}` : ''}</dd></div>
         {row.period_return != null && <div><dt>Period return</dt><dd>{percent(row.period_return, true)}</dd></div>}
-        {row.qualifying_fraction != null && <div><dt>Qualifying days</dt><dd>{percent(row.qualifying_fraction)}</dd></div>}
+        {row.excess_vs_sector != null && <div><dt>Excess vs sector</dt><dd>{points(row.excess_vs_sector)}</dd></div>}
+        {row.qualifying_fraction != null && <div><dt>Qualifying share</dt><dd>{percent(row.qualifying_fraction)}</dd></div>}
         {row.breadth != null && <div><dt>Breadth</dt><dd>{percent(row.breadth)}</dd></div>}
         {row.qualifying_days != null && <div><dt>Qualifying / observed days</dt><dd>{row.qualifying_days} / {row.observed_usable_days}</dd></div>}
         {row.requested_sessions != null && <div><dt>Requested sessions</dt><dd>{row.requested_sessions} · {percent(row.requested_coverage)} observed</dd></div>}
@@ -71,14 +87,25 @@ function Evidence({ result }: { result: TrustedResult }) {
 export function TurnCard({ turn }: { turn: AgentTurn }) {
   const result = turn.trusted_result
   const lead = result?.rows[0]
-  const metric = lead ? resultMetric(lead) : null
+  const sortMeasure = turn.decision?.request?.sort.measure
+  const metric = lead ? resultMetric(lead, sortMeasure) : null
   return <article className="agent-turn" aria-label={`Question: ${turn.question}`}>
     <div className="agent-question"><span>Question</span><p>{turn.question}</p></div>
     {activeStatuses.has(turn.status) && <div className="agent-progress" role="status"><span className="agent-pulse" aria-hidden="true" />{turn.status === 'cancel_requested' ? 'Stopping this turn…' : 'Analysis in progress. You can leave and return to this conversation.'}</div>}
     {result && <div className="agent-answer">
       <div className="agent-result-heading"><span>Verified calculation</span>{result.data.synthetic && <Badge variant="outline">SYNTHETIC</Badge>}</div>
-      {lead ? <div className="agent-result-main"><div><strong>{rowTitle(lead)}</strong>{lead.name && <span>{lead.name}</span>}</div><div><span>{metric?.label}</span><strong>{metric?.value}</strong></div></div> : <p>No rows matched the validated request in the evaluated data.</p>}
-      {lead?.qualifying_days != null && <p className="agent-observation">{lead.qualifying_days} of {lead.observed_usable_days} observed usable days qualified{lead.requested_sessions != null ? ` · ${lead.requested_sessions} sessions requested` : ''}</p>}
+      {result.rows.length > 1 ? <div className="agent-ranked-results">
+        <h4>Ranked results</h4>
+        <Table aria-label="Verified ranked results" className="agent-ranking-table">
+          <TableHeader><TableRow><TableHead scope="col">Rank</TableHead><TableHead scope="col">Stock / sector</TableHead><TableHead scope="col">{metric?.label}</TableHead></TableRow></TableHeader>
+          <TableBody>{result.rows.map((row, index) => <TableRow key={`${rowTitle(row)}-${index}`}>
+            <TableCell>{index + 1}</TableCell>
+            <TableCell><strong>{rowTitle(row)}</strong>{row.name && <span>{row.name}</span>}</TableCell>
+            <TableCell><strong>{resultMetric(row, sortMeasure).value}</strong>{row.qualifying_days != null && <span>{row.qualifying_days} / {row.observed_usable_days} observed days</span>}</TableCell>
+          </TableRow>)}</TableBody>
+        </Table>
+        {result.matched_count > result.rows.length && <p>Showing {result.rows.length} of {result.matched_count} matches.</p>}
+      </div> : lead ? <><div className="agent-result-main"><div><strong>{rowTitle(lead)}</strong>{lead.name && <span>{lead.name}</span>}</div><div><span>{metric?.label}</span><strong>{metric?.value}</strong></div></div>{lead.qualifying_days != null && <p className="agent-observation">{lead.qualifying_days} of {lead.observed_usable_days} observed usable days qualified{lead.requested_sessions != null ? ` · ${lead.requested_sessions} sessions requested` : ''}</p>}</> : <p>No rows matched the validated request in the evaluated data.</p>}
       <p className="agent-coverage">{result.coverage_label}. {result.ranking_scope === 'eligible_stocks_only' ? 'Ranking applies to eligible stocks only.' : ''}</p>
       {turn.agent_explanation && <div className="agent-interpretation"><h4>Interpretation</h4><p>{turn.agent_explanation}</p></div>}
       {turn.decision?.assumptions && turn.decision.assumptions.length > 0 && <div className="agent-assumptions"><h4>Assumptions</h4><ul>{turn.decision.assumptions.map((assumption) => <li key={assumption}>{assumption}</li>)}</ul></div>}
