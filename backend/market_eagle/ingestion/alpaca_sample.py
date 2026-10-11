@@ -145,7 +145,7 @@ def review_sample(conn: psycopg.Connection, stage_id: str) -> dict:
     with conn.cursor() as cur:
         cur.execute(
             "SELECT source_checksum, fetched_at, requested_start, requested_end, "
-            "comparison_session, status, snapshot_id, preparation_id "
+            "comparison_session, status, snapshot_id, preparation_id, identity_assumption "
             "FROM alpaca_sample_stage WHERE stage_id = %s",
             (stage_id,),
         )
@@ -174,6 +174,7 @@ def review_sample(conn: psycopg.Connection, stage_id: str) -> dict:
         "status": stage[5],
         "snapshot_id": stage[6],
         "preparation_id": str(stage[7]) if stage[7] else None,
+        "identity_assumption": stage[8],
         "source": SOURCE,
         "sector_taxonomy": TAXONOMY,
         "membership_claim": "five-stock private validation sample; not S&P 500",
@@ -198,11 +199,18 @@ def approve_sample(
     expected_checksum: str,
     reviewer: str,
     review_note: str,
+    identity_assumption: str,
     aliases: list[dict],
 ) -> dict:
     """Publish the isolated sample and its collection preparation atomically."""
-    if not reviewer.strip() or not review_note.strip():
-        raise ValueError("reviewer and review note are required")
+    if (
+        not reviewer.strip()
+        or not review_note.strip()
+        or not identity_assumption.strip()
+    ):
+        raise ValueError(
+            "reviewer, review note, and residual identity assumption are required"
+        )
     with conn.transaction(), conn.cursor() as cur:
         cur.execute(
             "SELECT pg_advisory_xact_lock(hashtext('market-eagle-sample-publication'))"
@@ -307,13 +315,21 @@ def approve_sample(
             preparation_id=prepared["preparation_id"],
             expected_checksum=prepared["checksum"],
             reviewer=reviewer,
-            review_note=review_note,
+            review_note=f"{review_note}\nResidual identity assumption: {identity_assumption}",
             aliases=aliases,
         )
         cur.execute(
             "UPDATE alpaca_sample_stage SET status = 'published', reviewed_by = %s, "
-            "review_note = %s, reviewed_at = now(), snapshot_id = %s, preparation_id = %s "
+            "review_note = %s, identity_assumption = %s, reviewed_at = now(), "
+            "snapshot_id = %s, preparation_id = %s "
             "WHERE stage_id = %s",
-            (reviewer, review_note, snapshot_id, prepared["preparation_id"], stage_id),
+            (
+                reviewer,
+                review_note,
+                identity_assumption,
+                snapshot_id,
+                prepared["preparation_id"],
+                stage_id,
+            ),
         )
     return request

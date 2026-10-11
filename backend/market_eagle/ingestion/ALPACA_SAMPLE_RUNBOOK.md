@@ -13,7 +13,11 @@ python -m market_eagle.ingestion.alpaca_sample_cli review STAGE_ID
 python -m market_eagle.ingestion.alpaca_sample_cli draft STAGE_ID --output C:/private/alpaca-sample-approval.json
 ```
 
-`probe` reads the bounded active US-equity asset list and trading calendar. `--bars` also reads at most three historical pages for the five symbols and prints counts only. Historical requests use an exact exclusive UTC cutoff after the requested end date; a date-only cutoff can enter Alpaca's recent SIP entitlement window and return HTTP 403. `stage` holds the five asset identities and the calendar, including the preceding comparison session; it neither publishes a catalog nor writes prices. Review the five asset IDs, names, exchanges, separate share lines, date range, and session count. The draft leaves reviewer, review note, alias start dates, and evidence blank. For each stock, independently verify the Alpaca asset ID and that its ticker and share line cover the comparison session through the requested end; enter the earliest verified date and dated evidence. A current asset record alone does not prove the two-year history. Do not approve an unresolved rename or identity.
+`probe` reads the bounded active US-equity asset list and trading calendar. `--bars` also reads at most three historical pages for the five symbols, from the preceding comparison session through the requested end. It pins Alpaca's `asof` date and reports the exact missing, unexpected, or duplicate bar dates against the calendar without printing prices. Require `complete: true` and retain the dated probe result privately. Historical requests use an exact exclusive UTC cutoff after the requested end date; a date-only cutoff can enter Alpaca's recent SIP entitlement window and return HTTP 403. `stage` holds the five current asset identities and the calendar; it neither publishes a catalog nor writes prices.
+
+Review the staged checksum, five asset UUIDs, names, exchanges, separate share lines, date range, and session count. For each stock, use dated issuer or exchange records before the comparison session, within the window, and near its end to establish the common share class, ticker, and venue. Check for known symbol, listing, or share-class changes during the window; resolve any change before approval. Compare these records with the current staged Alpaca asset and the complete, pinned historical bar-date probe. Put specific sources, dates, and findings in each alias's `evidence`, and keep a dated private review memo. The draft leaves reviewer, review note, residual identity assumption, alias start dates, and evidence blank.
+
+Set `verified_from` to the comparison session only when that whole interval has been reviewed under this standard. It marks the start of the approved collection alias span, **not** the security's listing inception or the creation date of its Alpaca UUID. Current Alpaca assets do not provide historical UUID ownership; historical bars can be relabeled by Alpaca's `asof` symbol mapping. Record the remaining assumption explicitly: the current Alpaca UUID represents the same common share line across the reviewed interval. Do not approve if issuer or exchange evidence conflicts, bar dates are incomplete, or a known identity change remains unresolved. This standard supports private ingestion validation; it does not certify historical UUID continuity or S&P 500 membership.
 
 After review, the approval file has the following shape, with **five** alias entries:
 
@@ -22,7 +26,8 @@ After review, the approval file has the following shape, with **five** alias ent
   "stage_id": "STAGE_ID",
   "checksum": "CHECKSUM_FROM_REVIEW",
   "reviewer": "name",
-  "review_note": "dated share-line, symbol-history, and calendar evidence checked",
+  "review_note": "dated issuer records and complete pinned bar-date probe checked; private validation only",
+  "identity_assumption": "Current Alpaca asset UUID represents the same common share line throughout the reviewed interval; historical UUID ownership is not independently attested.",
   "aliases": [{
     "stock_id": "sample:alpaca:ASSET_UUID",
     "asset_id": "ASSET_UUID",
@@ -30,12 +35,12 @@ After review, the approval file has the following shape, with **five** alias ent
     "exchange": "NASDAQ",
     "verified_from": "2024-10-08",
     "verified_to": null,
-    "evidence": "specific dated source and finding"
+    "evidence": "dated issuer or exchange sources before, within, and near end of window; class, ticker, venue, no unresolved change; pinned bar-date probe"
   }]
 }
 ```
 
-`approve` checks the stage checksum and all five identities and dated aliases, then atomically publishes the isolated sample snapshot, approved symbol history, `US_EQUITY` sessions from Alpaca's calendar, and a pinned collection preparation. A failed review leaves no partial catalog. `request` prints the resulting workflow input. `collect` synchronously uses the existing bounded five-symbol Alpaca worker and then reports coverage; it is an explicit private database write.
+The named reviewer completes the evidence and assumption after inspecting the private memo and probe. `approve` checks the stage checksum and all five identities and dated aliases, then atomically publishes the isolated sample snapshot, approved symbol history, `US_EQUITY` sessions from Alpaca's calendar, and a pinned collection preparation. The assumption is stored with the reviewed stage and preparation. A failed review leaves no partial catalog. `request` prints the resulting workflow input. `collect` synchronously uses the existing bounded five-symbol Alpaca worker and then reports coverage; it is an explicit private database write.
 
 ```powershell
 python -m market_eagle.ingestion.alpaca_sample_cli approve C:/private/alpaca-sample-approval.json
