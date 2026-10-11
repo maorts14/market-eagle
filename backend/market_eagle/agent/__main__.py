@@ -35,6 +35,9 @@ async def main() -> None:
         feed=os.environ["MARKET_EAGLE_FEED"],
         price_basis=os.environ["MARKET_EAGLE_PRICE_BASIS"],
         exchange=os.environ["MARKET_EAGLE_EXCHANGE"],
+        private_sample_snapshot_id=os.environ.get(
+            "MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID"
+        ),
     )
     temporal = await Client.connect(
         os.environ.get("TEMPORAL_ADDRESS", "localhost:7233"),
