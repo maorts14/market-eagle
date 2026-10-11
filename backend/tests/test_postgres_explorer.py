@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from pathlib import Path
 
 import psycopg
@@ -103,6 +104,105 @@ def test_postgres_explorer_matches_committed_fixture_windows() -> None:
     assert stored_analysis == fixture_analysis
     assert stored_analysis["eligible_count"] == 4
     assert stored_analysis["rows"][0]["ticker"] == "EPSI"
+
+
+def test_bounded_postgres_projection_matches_frequency_and_exclusion_cases() -> None:
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        pytest.skip("local PostgreSQL integration database is not configured")
+    postgres = PostgresAnalyticsRepository(
+        database_url,
+        source="synthetic-v1",
+        feed="fictional",
+        price_basis="synthetic_raw",
+        exchange="SYNTHETIC",
+    )
+    fixture = SyntheticFixtureRepository(FIXTURE)
+    daily_condition = {
+        "field": "daily_dollar_volume",
+        "operator": ">",
+        "value": "100000",
+        "unit": "USD",
+    }
+    common = {
+        "request_version": 1,
+        "universe": "latest_published_catalog",
+        "window": {"start": "2025-12-01", "end": "2025-12-31"},
+        "grain": "stock",
+        "limit": 5,
+    }
+    requests = [
+        common
+        | {
+            "measures": ["period_return"],
+            "sort": {"measure": "period_return"},
+        },
+        common
+        | {
+            "measures": ["qualifying_fraction", "observed_usable_days"],
+            "daily_conditions": [daily_condition],
+            "sort": {"measure": "qualifying_fraction"},
+        },
+        common
+        | {
+            "measures": ["period_return", "qualifying_fraction"],
+            "daily_conditions": [daily_condition],
+            "sort": {"measure": "period_return"},
+        },
+        common
+        | {
+            "window": {"start": "2025-01-01", "end": "2025-12-31"},
+            "measures": ["qualifying_days", "observed_usable_days"],
+            "daily_conditions": [daily_condition],
+            "sort": {"measure": "qualifying_days"},
+        },
+        common
+        | {
+            "grain": "sector",
+            "measures": ["breadth"],
+            "sort": {"measure": "breadth"},
+            "limit": 2,
+        },
+        common
+        | {
+            "window": {"start": "2025-12-01", "end": "2025-12-01"},
+            "measures": ["qualifying_fraction"],
+            "daily_conditions": [
+                {
+                    "field": "volume",
+                    "operator": "in",
+                    "value": [1098, 2896],
+                    "unit": "shares",
+                },
+                {"field": "close", "operator": ">", "value": 50, "unit": "price"},
+            ],
+            "sort": {"measure": "qualifying_fraction"},
+        },
+        common
+        | {
+            "window": {"start": "2023-12-29", "end": "2023-12-29"},
+            "measures": ["qualifying_fraction"],
+            "daily_conditions": [
+                {"field": "volume", "operator": ">", "value": 0, "unit": "shares"}
+            ],
+            "sort": {"measure": "qualifying_fraction"},
+        },
+    ]
+    for raw_request in requests:
+        request = AnalyticalRequest.model_validate(raw_request)
+        actual = AnalyticsService(postgres).execute(request)
+        expected = AnalyticsService(fixture).execute(request)
+        actual.pop("calculated_at")
+        expected.pop("calculated_at")
+        assert actual == expected
+
+    projected = postgres.load_with_daily_stats(
+        date.fromisoformat("2024-01-02"),
+        date.fromisoformat("2025-12-31"),
+        [],
+    )
+    assert len(projected.bars) <= 2 * len(projected.members)
+    assert len(projected.daily_stats) == len(projected.members)
 
 
 def test_postgres_agent_turn_through_http_and_temporal(monkeypatch) -> None:
