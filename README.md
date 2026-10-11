@@ -40,6 +40,14 @@ Temporal gRPC at `localhost:7233`, and the UI at
 
 After `integration`, start `dev.py api` in one terminal and `npm --prefix frontend run dev` in another. To use the API rather than the browser's explicitly fictional fixture adapter, set `VITE_EXPLORER_MODE=api` for the frontend process. The API uses a separate read-only PostgreSQL role; its generated local password stays in ignored `infra/.env`. The fictional fixture is repeatable, and the integration gate compares two explorer windows through PostgreSQL and HTTP with the committed calculation results.
 
+The five-stock, two-year `synthetic-v1` dataset is for CI and this local
+hands-on **test environment**. It contains no real market prices. Run
+`dev.py integration` to load it into the local test database, then use the API
+and UI commands above to try the same calculations the automated checks verify.
+Keep this database separate from the actual app deployment. The actual app
+requires a reviewed real catalog and must not select `synthetic-v1` or an
+isolated five-stock validation snapshot.
+
 The API also mounts `/api/v1/agent` and stores conversations, evidence, and
 traces in application PostgreSQL through a separate agent-only role. To run
 free-text turns, add `OPENROUTER_API_KEY` to
@@ -55,13 +63,11 @@ inference and structured-output behavior require a key-backed check. Live S&P
 500 catalog publication and unrestricted
 market-data display remain gated by the documented provider checks.
 
-After a private five-stock Alpaca sample is reviewed and published, set
-`MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID` in ignored `infra/.env` to its
-published snapshot ID before starting `dev.py api` and `dev.py agent-worker`.
-This explicitly selects the private validation sample for the local app, labels
-it as outside the S&P 500, and leaves `catalog_current` unchanged. Clear the
-setting to return to the fictional development fixture. The sample path does
-not resolve the production return price-basis or data-rights decisions.
+An optional real Alpaca five-stock sample is limited to isolated ingestion
+validation. Its snapshot selector, `MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID`,
+is test-only and must not be set for the actual app deployment. It does not
+establish S&P 500 membership, a production return price basis, or external
+data-display rights.
 
 The local Compose stack is for development. It contains no provider or model
 credentials and publishes services to host loopback. The first private

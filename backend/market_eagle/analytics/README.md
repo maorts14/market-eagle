@@ -16,7 +16,10 @@ For a private five-stock Alpaca validation run, set
 `alpaca-sample-v1-...` snapshot ID and select `alpaca/sip/raw` with exchange
 `US_EQUITY`. This explicit read-only selection never changes `catalog_current`.
 It refuses a missing, unpublished, or non-sample snapshot and labels the result
-`private_five_stock_sample`, outside S&P 500 membership.
+`private_five_stock_sample`, outside S&P 500 membership. This selector is for an
+isolated test runtime only; the actual app deployment must reject it and use a
+reviewed real catalog. The local hands-on no-real-data environment uses the
+fictional `synthetic-v1` fixture instead.
 The service makes exactly one repository call per explorer or typed request and
 performs no writes. A slow batch read delays explorer page load and agent turns.
 
