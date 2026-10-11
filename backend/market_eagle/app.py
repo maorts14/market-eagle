@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import psycopg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from psycopg import sql
+from temporalio.api.workflowservice.v1 import DescribeNamespaceRequest
 from temporalio.client import Client
 
 from .agent.api import create_agent_router
@@ -19,6 +24,15 @@ from .analytics.fixture_repository import SyntheticFixtureRepository
 from .analytics.models import AnalyticsRepository
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _check_database(url: str, relation: str) -> None:
+    with psycopg.connect(
+        url, connect_timeout=3, options="-c statement_timeout=3000"
+    ) as conn:
+        conn.execute(
+            sql.SQL("SELECT 1 FROM {} LIMIT 0").format(sql.Identifier(relation))
+        )
 
 
 def selected_repository() -> AnalyticsRepository:
@@ -96,6 +110,35 @@ def create_app(
 
     @app.get("/api/v1/health")
     def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/api/v1/ready")
+    async def ready():
+        try:
+            if database_url := os.environ.get("DATABASE_URL"):
+                await asyncio.wait_for(
+                    asyncio.to_thread(
+                        _check_database, database_url, "selected_daily_bar"
+                    ),
+                    timeout=5,
+                )
+            if enabled:
+                await asyncio.wait_for(
+                    asyncio.to_thread(
+                        _check_database,
+                        os.environ["AGENT_DATABASE_URL"],
+                        "agent_conversation",
+                    ),
+                    timeout=5,
+                )
+                await asyncio.wait_for(
+                    app.state.temporal.workflow_service.describe_namespace(
+                        DescribeNamespaceRequest(namespace=app.state.temporal.namespace)
+                    ),
+                    timeout=5,
+                )
+        except Exception:  # noqa: BLE001 - readiness fails closed for any dependency error
+            return JSONResponse(status_code=503, content={"status": "unavailable"})
         return {"status": "ok"}
 
     return app
