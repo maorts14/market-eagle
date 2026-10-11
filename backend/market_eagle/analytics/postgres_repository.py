@@ -15,6 +15,7 @@ from .models import (
     DailyCondition,
     DailyStockStats,
 )
+from .service import AnalyticsError
 
 SQL_DIR = Path(__file__).resolve().parent / "helpers" / "db" / "sql"
 ENDPOINT_SQL = (SQL_DIR / "explorer_endpoints.sql").read_text(encoding="utf-8")
@@ -56,6 +57,7 @@ class PostgresAnalyticsRepository:
         exchange: str,
         statement_timeout_ms: int = 30_000,
         private_sample_snapshot_id: str | None = None,
+        production: bool = False,
     ) -> None:
         self.database_url = database_url
         self.source = source
@@ -63,6 +65,14 @@ class PostgresAnalyticsRepository:
         self.price_basis = price_basis
         self.exchange = exchange
         self.private_sample_snapshot_id = private_sample_snapshot_id
+        self.production = production
+        if production and (
+            private_sample_snapshot_id
+            or source == "synthetic-v1"
+            or feed == "fictional"
+            or exchange == "SYNTHETIC"
+        ):
+            raise ValueError("production cannot select test market data")
         if private_sample_snapshot_id and (source, feed, price_basis, exchange) != (
             "alpaca",
             "sip",
@@ -127,11 +137,23 @@ class PostgresAnalyticsRepository:
                     price_basis=self.price_basis,
                     synthetic=False,
                 )
+            if self.production and snapshot["source"] != "fmp-sp500":
+                raise AnalyticsError(
+                    "test_catalog_unavailable",
+                    "Production requires a reviewed full catalog",
+                    503,
+                )
 
             source_row = conn.execute(
                 "SELECT synthetic FROM data_source WHERE source = %s AND feed = %s",
                 (self.source, self.feed),
             ).fetchone()
+            if self.production and (source_row is None or source_row["synthetic"]):
+                raise AnalyticsError(
+                    "synthetic_data_unavailable",
+                    "Production requires a registered non-synthetic data source",
+                    503,
+                )
             members = conn.execute(
                 """SELECT m.stock_id, m.source_ticker AS ticker, s.name,
                               m.sector_code, sector.sector_name,
@@ -149,6 +171,12 @@ class PostgresAnalyticsRepository:
                        ORDER BY m.stock_id""",
                 (self.exchange, snapshot["snapshot_id"]),
             ).fetchall()
+            if self.production and len(members) < 450:
+                raise AnalyticsError(
+                    "incomplete_catalog",
+                    "Production requires at least 450 reviewed catalog members",
+                    503,
+                )
             sessions = conn.execute(
                 """SELECT session_date FROM trading_session
                        WHERE exchange = %s AND (session_date BETWEEN %s AND %s

@@ -58,6 +58,8 @@ def comparison_session(sessions: list[dict], start: date) -> str:
 
 
 def main() -> None:
+    if os.environ.get("MARKET_EAGLE_RUNTIME") == "production":
+        raise RuntimeError("production cannot run the five-stock test sample")
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("probe", "stage"):

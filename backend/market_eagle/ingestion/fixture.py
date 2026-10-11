@@ -16,6 +16,8 @@ from .store import ingest_page, publish_catalog, read_csv
 def load_fixture(
     conn: psycopg.Connection, fixture_dir: Path, page_size: int = 500
 ) -> dict[str, int]:
+    if os.environ.get("MARKET_EAGLE_RUNTIME") == "production":
+        raise RuntimeError("production cannot load synthetic fixture data")
     manifest = json.loads((fixture_dir / "manifest.json").read_text(encoding="utf-8"))
     if manifest["fixture_version"] != 1 or manifest["fictional"] is not True:
         raise ValueError("expected the fictional synthetic-v1 fixture")

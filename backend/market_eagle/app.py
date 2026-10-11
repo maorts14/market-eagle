@@ -38,6 +38,8 @@ def _check_database(url: str, relation: str) -> None:
 def selected_repository() -> AnalyticsRepository:
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
+        if os.environ.get("MARKET_EAGLE_RUNTIME") == "production":
+            raise RuntimeError("Production requires a market database")
         return SyntheticFixtureRepository(ROOT / "fixtures" / "synthetic-v1")
 
     from .analytics.postgres_repository import PostgresAnalyticsRepository
@@ -60,6 +62,7 @@ def selected_repository() -> AnalyticsRepository:
         private_sample_snapshot_id=os.environ.get(
             "MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID"
         ),
+        production=os.environ.get("MARKET_EAGLE_RUNTIME") == "production",
     )
 
 
