@@ -62,6 +62,7 @@ class OpenRouterResearchModel:
     ) -> str:
         options: dict[str, Any] = {}
         if structured:
+            options["temperature"] = 0
             options["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {

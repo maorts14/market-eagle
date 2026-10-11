@@ -88,6 +88,7 @@ def test_chat_completion_uses_fixed_free_model_and_structured_decision():
     sent = [json.loads(request.content) for request in requests]
     assert all(item["model"] == FREE_MODEL for item in sent)
     assert sent[0]["response_format"]["type"] == "json_schema"
+    assert sent[0]["temperature"] == 0
     assert sent[0]["response_format"]["json_schema"]["strict"] is True
     schema = sent[0]["response_format"]["json_schema"]["schema"]
     assert schema["additionalProperties"] is False

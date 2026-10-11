@@ -41,7 +41,14 @@ def interpretation_instructions(context: dict) -> str:
         "null. For a return ranking without daily filters, set daily_conditions and predicates "
         "to empty lists and reduction to null. Only set reduction when daily_conditions is "
         "nonempty; each condition's unit must match its field. Include the sort measure in "
-        "measures, and use only fields compatible with the chosen grain."
+        "measures, and use only fields compatible with the chosen grain. The universe value "
+        "latest_published_catalog already selects catalog membership; do not ask the user "
+        "to identify its stocks or add a predicate for membership. An unfiltered stock "
+        "return ranking uses request_version=1, universe=latest_published_catalog, "
+        "window={start,end}, grain=stock, measures=['period_return'], "
+        "daily_conditions=[], reduction=null, predicates=[], group_by=['stock_id'], "
+        "sort={measure:'period_return',direction:'desc'}, and the requested limit. "
+        "Those fields are available; do not ask the user to confirm the schema."
     )
 
 
