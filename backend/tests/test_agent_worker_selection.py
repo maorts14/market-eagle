@@ -9,12 +9,17 @@ from types import SimpleNamespace
 import pytest
 
 
-@pytest.mark.parametrize("sample_snapshot", [None, "alpaca-sample-v1-reviewed"])
-def test_worker_passes_private_sample_selection(monkeypatch, sample_snapshot) -> None:
+@pytest.mark.parametrize(
+    "sample_snapshot, production",
+    [(None, False), ("alpaca-sample-v1-reviewed", False), (None, True)],
+)
+def test_worker_passes_market_selection(
+    monkeypatch, sample_snapshot, production
+) -> None:
     worker_entry = importlib.import_module("market_eagle.agent.__main__")
     source, feed, basis, exchange = (
         ("alpaca", "sip", "raw", "US_EQUITY")
-        if sample_snapshot
+        if sample_snapshot or production
         else ("synthetic-v1", "fictional", "synthetic_raw", "SYNTHETIC")
     )
     for key, value in {
@@ -32,6 +37,9 @@ def test_worker_passes_private_sample_selection(monkeypatch, sample_snapshot) ->
         monkeypatch.setenv("MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID", sample_snapshot)
     else:
         monkeypatch.delenv("MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID", raising=False)
+    monkeypatch.setenv(
+        "MARKET_EAGLE_RUNTIME", "production" if production else "development"
+    )
 
     async def connect(*_args, **_kwargs):
         return object()
@@ -52,6 +60,7 @@ def test_worker_passes_private_sample_selection(monkeypatch, sample_snapshot) ->
 
     repository = selected["repository"]
     assert repository.private_sample_snapshot_id == sample_snapshot
+    assert repository.production is production
     assert (
         repository.source,
         repository.feed,

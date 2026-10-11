@@ -96,6 +96,10 @@ def publish_catalog_snapshot(request: dict) -> dict:
             return stage_constituents(conn, fetched)
     if request["source"] != "synthetic-v1":
         raise ApplicationError("unsupported catalog source", non_retryable=True)
+    if os.environ.get("MARKET_EAGLE_RUNTIME") == "production":
+        raise ApplicationError(
+            "production cannot publish a synthetic catalog", non_retryable=True
+        )
     fixture_dir = Path(__file__).resolve().parents[3] / "fixtures" / "synthetic-v1"
     rows = read_csv(fixture_dir / "catalog.csv")
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:

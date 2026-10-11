@@ -38,6 +38,7 @@ async def main() -> None:
         private_sample_snapshot_id=os.environ.get(
             "MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID"
         ),
+        production=os.environ.get("MARKET_EAGLE_RUNTIME") == "production",
     )
     temporal = await Client.connect(
         os.environ.get("TEMPORAL_ADDRESS", "localhost:7233"),
