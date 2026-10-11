@@ -50,24 +50,31 @@ def test_production_api_requires_database(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize(
-    "catalog_source, source_synthetic, expected_code",
+    "catalog_source, source_synthetic, member_count, expected_code",
     [
-        ("synthetic-v1", False, "test_catalog_unavailable"),
-        ("alpaca-sample-v1", False, "test_catalog_unavailable"),
-        ("fmp-sp500", True, "synthetic_data_unavailable"),
+        ("synthetic-v1", False, 0, "test_catalog_unavailable"),
+        ("alpaca-sample-v1", False, 0, "test_catalog_unavailable"),
+        ("unknown-source", False, 0, "test_catalog_unavailable"),
+        ("fmp-sp500", True, 0, "synthetic_data_unavailable"),
+        ("fmp-sp500", None, 0, "synthetic_data_unavailable"),
+        ("fmp-sp500", False, 5, "incomplete_catalog"),
     ],
 )
 def test_production_rejects_test_rows_in_database(
-    monkeypatch, catalog_source, source_synthetic, expected_code
+    monkeypatch, catalog_source, source_synthetic, member_count, expected_code
 ) -> None:
     module = importlib.import_module("market_eagle.analytics.postgres_repository")
 
     class Cursor:
-        def __init__(self, row=None):
+        def __init__(self, row=None, rows=None):
             self.row = row
+            self.rows = rows
 
         def fetchone(self):
             return self.row
+
+        def fetchall(self):
+            return self.rows
 
     class Connection:
         def __enter__(self):
@@ -81,9 +88,15 @@ def test_production_rejects_test_rows_in_database(
 
         def execute(self, query, _values=None):
             if "FROM catalog_current" in query:
-                return Cursor({"source": catalog_source})
+                return Cursor({"source": catalog_source, "snapshot_id": "reviewed"})
             if "FROM data_source" in query:
-                return Cursor({"synthetic": source_synthetic})
+                return Cursor(
+                    {"synthetic": source_synthetic}
+                    if source_synthetic is not None
+                    else None
+                )
+            if "FROM universe_member m" in query:
+                return Cursor(rows=[{}] * member_count)
             return Cursor()
 
     monkeypatch.setattr(

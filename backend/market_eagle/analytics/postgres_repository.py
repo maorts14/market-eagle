@@ -137,13 +137,10 @@ class PostgresAnalyticsRepository:
                     price_basis=self.price_basis,
                     synthetic=False,
                 )
-            if self.production and snapshot["source"] in (
-                "synthetic-v1",
-                "alpaca-sample-v1",
-            ):
+            if self.production and snapshot["source"] != "fmp-sp500":
                 raise AnalyticsError(
                     "test_catalog_unavailable",
-                    "Production cannot use a test catalog",
+                    "Production requires a reviewed full catalog",
                     503,
                 )
 
@@ -151,10 +148,10 @@ class PostgresAnalyticsRepository:
                 "SELECT synthetic FROM data_source WHERE source = %s AND feed = %s",
                 (self.source, self.feed),
             ).fetchone()
-            if self.production and source_row and source_row["synthetic"]:
+            if self.production and (source_row is None or source_row["synthetic"]):
                 raise AnalyticsError(
                     "synthetic_data_unavailable",
-                    "Production cannot use synthetic market data",
+                    "Production requires a registered non-synthetic data source",
                     503,
                 )
             members = conn.execute(
@@ -174,6 +171,12 @@ class PostgresAnalyticsRepository:
                        ORDER BY m.stock_id""",
                 (self.exchange, snapshot["snapshot_id"]),
             ).fetchall()
+            if self.production and len(members) < 450:
+                raise AnalyticsError(
+                    "incomplete_catalog",
+                    "Production requires at least 450 reviewed catalog members",
+                    503,
+                )
             sessions = conn.execute(
                 """SELECT session_date FROM trading_session
                        WHERE exchange = %s AND (session_date BETWEEN %s AND %s
