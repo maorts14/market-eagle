@@ -14,6 +14,11 @@ The default mode reads copied files from `public/fixtures/`. They are the explic
 
 To use the v1 explorer route, set `VITE_EXPLORER_MODE=api` before starting Vite. The dev server proxies `/api` to `http://127.0.0.1:8000`; a deployed frontend needs an equivalent same-origin route. In API mode, the shortcuts use the current UTC date. `src/lib/explorer.ts` is the adapter boundary, and `ExplorerResponse` mirrors the v1 response. The backend service can return additional fields such as exclusions and `return_rankings_trusted` without affecting the UI.
 
+When the API explicitly selects a published private Alpaca validation snapshot,
+the workbench labels it as a five-stock sample outside the S&P 500 catalog.
+Those stocks are grouped as unclassified, so this view checks real-data
+calculation and presentation without claiming a sector taxonomy.
+
 ## Checks
 
 ```sh

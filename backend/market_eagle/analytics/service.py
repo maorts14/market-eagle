@@ -230,6 +230,11 @@ class AnalyticsService:
                 "as_of": dataset.catalog_as_of,
                 "published_at": dataset.published_at,
                 "tracked_count": len(dataset.members),
+                **(
+                    {"scope": "private_five_stock_sample"}
+                    if dataset.catalog_source == "alpaca-sample-v1"
+                    else {}
+                ),
             },
             "data": {
                 "source": dataset.source,
@@ -334,6 +339,11 @@ class AnalyticsService:
                 "as_of": dataset.catalog_as_of,
                 "published_at": dataset.published_at,
                 "tracked_count": len(dataset.members),
+                **(
+                    {"scope": "private_five_stock_sample"}
+                    if dataset.catalog_source == "alpaca-sample-v1"
+                    else {}
+                ),
             },
             "data": {
                 "source": dataset.source,

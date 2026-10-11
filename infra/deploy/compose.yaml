@@ -83,6 +83,7 @@ services:
       MARKET_EAGLE_FEED: ${MARKET_EAGLE_FEED:?set reviewed feed}
       MARKET_EAGLE_PRICE_BASIS: ${MARKET_EAGLE_PRICE_BASIS:?set reviewed basis}
       MARKET_EAGLE_EXCHANGE: ${MARKET_EAGLE_EXCHANGE:?set reviewed exchange}
+      MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID: ${MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID:-}
       MARKET_EAGLE_AGENT_ENABLED: "1"
     secrets:
       - market_reader_pgpass
@@ -163,6 +164,7 @@ services:
       MARKET_EAGLE_FEED: ${MARKET_EAGLE_FEED:?set reviewed feed}
       MARKET_EAGLE_PRICE_BASIS: ${MARKET_EAGLE_PRICE_BASIS:?set reviewed basis}
       MARKET_EAGLE_EXCHANGE: ${MARKET_EAGLE_EXCHANGE:?set reviewed exchange}
+      MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID: ${MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID:-}
       OPENROUTER_MODEL: nvidia/nemotron-3-super-120b-a12b:free
     secrets:
       - market_reader_pgpass
