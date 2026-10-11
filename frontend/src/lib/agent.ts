@@ -6,11 +6,13 @@ export const exampleQuestion = 'Which stock gained most while daily dollar tradi
 export const followUpQuestion = 'How many observed days qualified for EPSI?'
 
 export type TurnStatus = 'running' | 'cancel_requested' | 'completed' | 'needs_clarification' | 'unsupported' | 'failed' | 'cancelled'
+export type AgentSortMeasure = 'period_return' | 'excess_vs_sector' | 'breadth' | 'sector_return' | 'qualifying_fraction' | 'qualifying_days'
 export type AgentRow = {
   ticker?: string
   name?: string
   sector_code?: string
   period_return?: number | null
+  excess_vs_sector?: number | string | null
   qualifying_fraction?: number | string | null
   breadth?: number | null
   sector_return?: number | null
@@ -42,7 +44,7 @@ export type AgentTurn = {
   conversation_id: string
   question: string
   status: TurnStatus
-  decision: { kind: 'query' | 'clarification' | 'unsupported'; assumptions: string[]; message?: string } | null
+  decision: { kind: 'query' | 'clarification' | 'unsupported'; assumptions: string[]; message?: string; request?: { sort: { measure: AgentSortMeasure } } | null } | null
   trusted_result: TrustedResult | null
   evidence_id: string | null
   agent_explanation: string | null
