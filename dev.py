@@ -429,6 +429,20 @@ def agent_evaluation(*args: str) -> None:
     )
 
 
+def agent_openrouter_smoke() -> None:
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = (
+        str(BACKEND) + os.pathsep + environment.get("PYTHONPATH", "")
+    )
+    result = subprocess.run(
+        (sys.executable, "-m", "market_eagle.agent.smoke_openrouter"),
+        cwd=ROOT,
+        env=environment,
+        check=False,
+    )
+    raise SystemExit(result.returncode)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -444,6 +458,7 @@ def main() -> None:
             "agent-worker",
             "migrate-agent-store",
             "agent-evaluation",
+            "agent-openrouter-smoke",
         ),
     )
     parser.add_argument("args", nargs=argparse.REMAINDER)
@@ -468,6 +483,8 @@ def main() -> None:
         migrate_agent_store()
     elif options.command == "agent-evaluation":
         agent_evaluation(*options.args)
+    elif options.command == "agent-openrouter-smoke":
+        agent_openrouter_smoke()
     else:
         fixture_check()
         compose("up", "-d", "--wait")

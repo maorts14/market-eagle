@@ -35,6 +35,7 @@ Temporal gRPC at `localhost:7233`, and the UI at
 .venv/Scripts/python dev.py agent-worker # run the research-agent Temporal worker
 .venv/Scripts/python dev.py migrate-agent-store # one-time import of old local SQLite conversations
 .venv/Scripts/python dev.py agent-evaluation # export stored turns for human review
+.venv/Scripts/python dev.py agent-openrouter-smoke # one live model call against synthetic analytics
 .venv/Scripts/python dev.py down         # stop services without deleting data
 ```
 
@@ -62,6 +63,12 @@ This explicitly selects the private validation sample for the local app, labels
 it as outside the S&P 500, and leaves `catalog_current` unchanged. Clear the
 setting to return to the fictional development fixture. The sample path does
 not resolve the production return price-basis or data-rights decisions.
+
+With `OPENROUTER_API_KEY` set in the shell, `dev.py agent-openrouter-smoke`
+asks one nonsensitive December 2025 ranking question and runs a valid query
+through the synthetic analytics fixture. It prints only a JSON pass/fail summary,
+not the key, prompt, or model response. A clarification or invalid request fails
+the check; free-model output can vary between calls.
 
 The local Compose stack is for development. It contains no provider or model
 credentials and publishes services to host loopback. The first private
