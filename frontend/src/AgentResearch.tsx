@@ -8,9 +8,11 @@ import {
   agent, agentMode, AgentApiError, exampleQuestion, followUpQuestion,
   type AgentConversation, type AgentConversationSummary, type AgentRow, type AgentSortMeasure, type AgentTurn, type TrustedResult,
 } from '@/lib/agent'
+import { isSyntheticTestData, syntheticApiTest } from '@/lib/mode'
 import './AgentResearch.css'
 
 const activeStatuses = new Set(['running', 'cancel_requested'])
+const syntheticApiQuestion = 'Which stock gained most while daily dollar trading volume exceeded $100,000 on at least 80% of observed days from December 1 to December 31, 2025?'
 
 function percent(value: number | string | null | undefined, signed = false) {
   if (value == null) return '—'
@@ -85,13 +87,15 @@ function Evidence({ result }: { result: TrustedResult }) {
 }
 
 export function TurnCard({ turn }: { turn: AgentTurn }) {
-  const result = turn.trusted_result
+  const mismatchedTestResult = syntheticApiTest && turn.trusted_result && !isSyntheticTestData(turn.trusted_result.data)
+  const result = mismatchedTestResult ? null : turn.trusted_result
   const lead = result?.rows[0]
   const sortMeasure = turn.decision?.request?.sort.measure
   const metric = lead ? resultMetric(lead, sortMeasure) : null
   return <article className="agent-turn" aria-label={`Question: ${turn.question}`}>
     <div className="agent-question"><span>Question</span><p>{turn.question}</p></div>
     {activeStatuses.has(turn.status) && <div className="agent-progress" role="status"><span className="agent-pulse" aria-hidden="true" />{turn.status === 'cancel_requested' ? 'Stopping this turn…' : 'Analysis in progress. You can leave and return to this conversation.'}</div>}
+    {mismatchedTestResult && <div className="agent-state-message error" role="alert"><strong>Test data mismatch</strong><p>The agent returned data outside synthetic-v1. Check the isolated test worker configuration.</p></div>}
     {result && <div className="agent-answer">
       <div className="agent-result-heading"><span>Verified calculation</span>{result.data.synthetic && <Badge variant="outline">SYNTHETIC</Badge>}{result.catalog.scope === 'private_five_stock_sample' && <Badge variant="outline">PRIVATE FIVE-STOCK SAMPLE · NOT S&amp;P 500</Badge>}</div>
       {result.rows.length > 1 ? <div className="agent-ranked-results">
@@ -271,13 +275,13 @@ export default function AgentResearch() {
   }
 
   return <section className="agent-section" aria-labelledby="agent-heading">
-    <div className="agent-header"><div><h2 id="agent-heading">Research conversation</h2><p>Research questions over retained market observations.</p></div><Badge variant="outline" className="agent-mode">{agentMode === 'fixture' ? 'SYNTHETIC AGENT DEMO' : 'AGENT API'}</Badge></div>
+    <div className="agent-header"><div><h2 id="agent-heading">Research conversation</h2><p>Research questions over retained market observations.</p></div><Badge variant="outline" className="agent-mode">{syntheticApiTest ? 'SYNTHETIC API TEST' : agentMode === 'fixture' ? 'SYNTHETIC AGENT DEMO' : 'AGENT API'}</Badge></div>
     <div className="agent-toolbar"><label htmlFor="conversation-select">Conversation</label><select id="conversation-select" value={selectedId} onChange={(event) => { setTurns([]); setSelectedId(event.target.value); setConfirmDelete(false); setDraft('') }} disabled={listing || !conversations.length || acting}>{conversations.length ? conversations.map((item) => <option key={item.conversation_id} value={item.conversation_id}>{item.title}</option>) : <option value="">No conversation yet</option>}</select><Button type="button" variant="outline" size="sm" disabled={listing || acting} onClick={createConversation}><Plus size={15} aria-hidden="true" />New</Button><Button type="button" variant="ghost" size="sm" disabled={listing || acting} onClick={reconnect}><RotateCcw size={15} aria-hidden="true" />Refresh</Button>{selectedId && <Button type="button" variant="ghost" size="sm" className="agent-delete" disabled={listing || acting} onClick={() => setConfirmDelete(true)}><Trash2 size={15} aria-hidden="true" />Delete</Button>}<span>{agentMode === 'fixture' ? 'Local fixture conversations' : 'All conversations'}</span></div>
     {confirmDelete && <div className="agent-delete-confirm" role="group" aria-label="Confirm conversation deletion"><p><strong>Delete this conversation permanently?</strong> {agentMode === 'api' ? 'It will disappear for every visitor. ' : ''}Its turns and evidence cannot be recovered. The initial deployment has no backup.</p><div><Button type="button" size="sm" variant="destructive" disabled={acting} onClick={removeConversation}>Delete permanently</Button><Button type="button" size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>Keep conversation</Button></div></div>}
     {error && <div className="agent-error" role="alert"><p>{error}</p><Button type="button" size="sm" variant="outline" onClick={reconnect}><RotateCcw size={14} aria-hidden="true" />Reconnect</Button></div>}
     <div className="agent-conversation" ref={conversationRef} aria-live="polite">{listing && !selectedId ? <p className="agent-empty">Loading conversations…</p> : loading ? <p className="agent-empty">Loading conversation…</p> : turns.some((turn) => turn.conversation_id === selectedId) ? turns.filter((turn) => turn.conversation_id === selectedId).map((turn) => <TurnCard turn={turn} key={turn.turn_id} />) : <div className="agent-empty"><strong>{selectedId ? 'Start with a research question' : 'Start a conversation'}</strong><p>{selectedId ? 'Questions and follow-ups in this conversation share context.' : 'Create a conversation to ask the research agent. New conversations start fresh.'}</p></div>}</div>
     {activeTurn && <div className="agent-active-actions"><span>{activeTurn.status === 'cancel_requested' ? 'Cancellation requested' : 'One turn is active in this conversation'}</span><Button type="button" size="sm" variant="outline" disabled={acting || activeTurn.status === 'cancel_requested'} onClick={cancel}><CircleStop size={15} aria-hidden="true" />Cancel turn</Button></div>}
-    <form className="agent-composer" onSubmit={submit}><label htmlFor="agent-question">{turns.length ? 'Follow-up question' : 'Research question'}</label><div><Textarea id="agent-question" value={draft} onChange={(event) => { setDraft(event.target.value); if (requestRef.current?.question !== event.target.value.trim()) requestRef.current = null }} onKeyDown={handleKeyDown} maxLength={4000} rows={2} placeholder={agentMode === 'fixture' ? 'Use the documented sample question below' : 'Ask about returns, breadth, volume, or coverage'} disabled={!selectedId || Boolean(activeTurn) || acting} /><Button type="submit" disabled={!selectedId || !draft.trim() || Boolean(activeTurn) || acting}><ArrowUp size={16} aria-hidden="true" />Ask</Button></div><div className="agent-composer-foot"><span>{agentMode === 'fixture' ? 'Local fixture: example and one follow-up only. No model is called.' : 'Answers use validated, read-only calculations.'}</span><span>{draft.length} / 4000 · Ctrl+Enter to send</span></div></form>
-    <div className="agent-suggestions"><span>Try</span><button type="button" disabled={!selectedId || Boolean(activeTurn)} onClick={() => setDraft(exampleQuestion)}>Gain + dollar volume last month</button>{turns.some((turn) => turn.status === 'completed') && <button type="button" disabled={!selectedId || Boolean(activeTurn)} onClick={() => setDraft(followUpQuestion)}>Ask a follow-up</button>}</div>
+    <form className="agent-composer" onSubmit={submit}><label htmlFor="agent-question">{turns.length ? 'Follow-up question' : 'Research question'}</label><div><Textarea id="agent-question" value={draft} onChange={(event) => { setDraft(event.target.value); if (requestRef.current?.question !== event.target.value.trim()) requestRef.current = null }} onKeyDown={handleKeyDown} maxLength={4000} rows={2} placeholder={agentMode === 'fixture' ? 'Use the documented sample question below' : 'Ask about returns, breadth, volume, or coverage'} disabled={!selectedId || Boolean(activeTurn) || acting} /><Button type="submit" disabled={!selectedId || !draft.trim() || Boolean(activeTurn) || acting}><ArrowUp size={16} aria-hidden="true" />Ask</Button></div><div className="agent-composer-foot"><span>{syntheticApiTest ? 'Agent API over fictional 2024–2025 data.' : agentMode === 'fixture' ? 'Local fixture: example and one follow-up only. No model is called.' : 'Answers use validated, read-only calculations.'}</span><span>{draft.length} / 4000 · Ctrl+Enter to send</span></div></form>
+    <div className="agent-suggestions"><span>Try</span><button type="button" disabled={!selectedId || Boolean(activeTurn)} onClick={() => setDraft(syntheticApiTest ? syntheticApiQuestion : exampleQuestion)}>{syntheticApiTest ? 'Gain + dollar volume in Dec 2025' : 'Gain + dollar volume last month'}</button>{turns.some((turn) => turn.status === 'completed') && <button type="button" disabled={!selectedId || Boolean(activeTurn)} onClick={() => setDraft(followUpQuestion)}>Ask a follow-up</button>}</div>
   </section>
 }
