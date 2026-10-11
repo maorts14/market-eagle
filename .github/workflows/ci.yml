@@ -28,7 +28,7 @@ jobs:
             -e AGENT_DATABASE_URL=postgresql://agent@postgres:5432/market_eagle \
             -e MARKET_EAGLE_SOURCE=alpaca -e MARKET_EAGLE_FEED=sip \
             -e MARKET_EAGLE_PRICE_BASIS=raw -e MARKET_EAGLE_EXCHANGE=US_EQUITY \
-            -e MARKET_EAGLE_AGENT_ENABLED=1 \
+            -e MARKET_EAGLE_AGENT_ENABLED=1 -e MARKET_EAGLE_RUNTIME=production \
             market-eagle/backend:reviewed-commit \
             -c 'import market_eagle.app; import market_eagle.agent.worker'
           docker run --rm --entrypoint python market-eagle/backend:reviewed-commit -m market_eagle.ingestion.bootstrap --help
