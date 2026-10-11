@@ -20,6 +20,8 @@ FREE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
 def _strict_decision_schema() -> dict:
     schema = Decision.model_json_schema()
+    decimal_pattern = r"^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$"
+    provider_decimal_pattern = r"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$"
 
     def normalize(node: dict | list) -> None:
         if isinstance(node, list):
@@ -28,6 +30,8 @@ def _strict_decision_schema() -> dict:
                     normalize(item)
             return
         node.pop("default", None)
+        if node.get("pattern") == decimal_pattern:
+            node["pattern"] = provider_decimal_pattern
         if "properties" in node:
             node["additionalProperties"] = False
             node["required"] = list(node["properties"])
