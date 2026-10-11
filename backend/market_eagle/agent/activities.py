@@ -37,7 +37,11 @@ def interpretation_instructions(context: dict) -> str:
         "Choose request fields only from the supplied schema. Ask for clarification when a "
         "reference like 'that stock' has no referent in this conversation. Recent turns include "
         "trusted_result fields; resolve follow-ups from those fields and their evidence IDs, "
-        "not from unverified prose."
+        "not from unverified prose. For clarification or unsupported decisions, set request to "
+        "null. For a return ranking without daily filters, set daily_conditions and predicates "
+        "to empty lists and reduction to null. Only set reduction when daily_conditions is "
+        "nonempty; each condition's unit must match its field. Include the sort measure in "
+        "measures, and use only fields compatible with the chosen grain."
     )
 
 

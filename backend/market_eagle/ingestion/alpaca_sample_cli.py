@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from collections import Counter
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -14,6 +15,46 @@ import psycopg
 from .alpaca_preparation import collection_request
 from .alpaca_reference import fetch_assets, fetch_calendar
 from .alpaca_sample import approve_sample, review_sample, stage_sample
+
+
+def summarize_bar_coverage(
+    sessions: list[dict], start: date, end: date, observed: dict[str, list[str]]
+) -> dict:
+    """Compare session dates, including the preceding close, without exposing prices."""
+    comparison = comparison_session(sessions, start)
+    expected = {
+        item["date"]
+        for item in sessions
+        if comparison <= item["date"] <= end.isoformat()
+    }
+    by_symbol = {}
+    for symbol, dates in observed.items():
+        counts = Counter(dates)
+        actual = set(counts)
+        by_symbol[symbol] = {
+            "bar_count": len(dates),
+            "missing_sessions": sorted(expected - actual),
+            "unexpected_dates": sorted(actual - expected),
+            "duplicate_date_count": sum(count - 1 for count in counts.values()),
+        }
+    return {
+        "comparison_session": comparison,
+        "expected_session_count": len(expected),
+        "symbols": by_symbol,
+        "complete": all(
+            not item["missing_sessions"]
+            and not item["unexpected_dates"]
+            and item["duplicate_date_count"] == 0
+            for item in by_symbol.values()
+        ),
+    }
+
+
+def comparison_session(sessions: list[dict], start: date) -> str:
+    prior = [item["date"] for item in sessions if item["date"] < start.isoformat()]
+    if not prior:
+        raise ValueError("calendar lacks a preceding comparison session")
+    return max(prior)
 
 
 def main() -> None:
@@ -59,7 +100,9 @@ def main() -> None:
                 from .alpaca import historical_pages
                 from .worker import _pace_provider
 
-                counts = {symbol: 0 for symbol in args.symbols}
+                observed = {symbol: [] for symbol in args.symbols}
+                comparison = comparison_session(sessions, args.start)
+                symbol_asof = datetime.now(timezone.utc).date()
                 pages = 0
                 with httpx.Client() as client:
                     for payload, _observed_at in historical_pages(
@@ -67,26 +110,27 @@ def main() -> None:
                         key_id=key_id,
                         secret_key=secret,
                         symbols=args.symbols,
-                        start=args.start,
+                        start=date.fromisoformat(comparison),
                         end=args.end,
                         feed="sip",
                         adjustment="raw",
                         max_pages=3,
-                        asof=datetime.now(timezone.utc).date(),
+                        asof=symbol_asof,
                         before_request=_pace_provider,
                     ):
                         pages += 1
                         for symbol, rows in payload["bars"].items():
-                            if symbol not in counts:
+                            if symbol not in observed:
                                 raise ValueError(
                                     "Alpaca returned a symbol outside the sample"
                                 )
-                            counts[symbol] += len(rows)
+                            observed[symbol].extend(row["t"][:10] for row in rows)
                 result["historical_probe"] = {
                     "feed": "sip",
                     "price_basis": "raw",
                     "pages": pages,
-                    "bar_counts": counts,
+                    "symbol_asof": symbol_asof.isoformat(),
+                    **summarize_bar_coverage(sessions, args.start, args.end, observed),
                 }
             print(json.dumps(result, indent=2))
             return
@@ -113,6 +157,7 @@ def main() -> None:
                 "checksum": report["checksum"],
                 "reviewer": "",
                 "review_note": "",
+                "identity_assumption": "",
                 "aliases": [
                     {
                         "stock_id": item["stock_id"],
@@ -139,6 +184,7 @@ def main() -> None:
                 expected_checksum=approval["checksum"],
                 reviewer=approval["reviewer"],
                 review_note=approval["review_note"],
+                identity_assumption=approval["identity_assumption"],
                 aliases=approval["aliases"],
             )
         else:

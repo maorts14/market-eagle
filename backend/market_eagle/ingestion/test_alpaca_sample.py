@@ -17,12 +17,14 @@ from market_eagle.analytics.service import AnalyticsError, AnalyticsService
 
 from .alpaca_preparation import validate_collection_group
 from .alpaca_sample import approve_sample, review_sample, sample_stock_id, stage_sample
+from .alpaca_sample_cli import summarize_bar_coverage
 from .store import ingest_page
 
 pytestmark = pytest.mark.synthetic_integration
 START = date(2024, 10, 9)
 END = date(2026, 10, 8)
 SYMBOLS = ("AAPL", "AMZN", "JPM", "MSFT", "NVDA")
+ASSUMPTION = "Current Alpaca asset UUID maps to the same common share line across the reviewed window."
 
 
 @pytest.fixture
@@ -124,6 +126,7 @@ def test_reviewed_sample_publishes_isolated_catalog_and_collection(conn):
         expected_checksum=stage["checksum"],
         reviewer="test reviewer",
         review_note="checked five private sample share lines",
+        identity_assumption=ASSUMPTION,
         aliases=_aliases(),
     )
     assert request["source"] == "alpaca"
@@ -160,6 +163,7 @@ def test_reviewed_sample_publishes_isolated_catalog_and_collection(conn):
     with pytest.raises(AnalyticsError, match="No published catalog"):
         AnalyticsService(sample_repository).explorer(START, START)
     assert conn.execute("SELECT count(*) FROM universe_member").fetchone()[0] == 5
+    assert review_sample(conn, stage["stage_id"])["identity_assumption"] == ASSUMPTION
     assert (
         "rights-unconfirmed"
         in conn.execute(
@@ -173,6 +177,7 @@ def test_reviewed_sample_publishes_isolated_catalog_and_collection(conn):
             expected_checksum=stage["checksum"],
             reviewer="test reviewer",
             review_note="checked five private sample share lines",
+            identity_assumption=ASSUMPTION,
             aliases=_aliases(),
         )
         == request
@@ -216,6 +221,16 @@ def test_reviewed_sample_publishes_isolated_catalog_and_collection(conn):
 
 def test_sample_review_rejects_unreviewed_or_changed_content(conn):
     stage = _stage(conn)
+    with pytest.raises(ValueError, match="residual identity assumption"):
+        approve_sample(
+            conn,
+            stage_id=stage["stage_id"],
+            expected_checksum=stage["checksum"],
+            reviewer="reviewer",
+            review_note="checked",
+            identity_assumption="",
+            aliases=_aliases(),
+        )
     with pytest.raises(ValueError, match="checksum"):
         approve_sample(
             conn,
@@ -223,6 +238,7 @@ def test_sample_review_rejects_unreviewed_or_changed_content(conn):
             expected_checksum="wrong",
             reviewer="reviewer",
             review_note="checked",
+            identity_assumption=ASSUMPTION,
             aliases=_aliases(),
         )
     with pytest.raises(ValueError, match="all five"):
@@ -232,6 +248,7 @@ def test_sample_review_rejects_unreviewed_or_changed_content(conn):
             expected_checksum=stage["checksum"],
             reviewer="reviewer",
             review_note="checked",
+            identity_assumption=ASSUMPTION,
             aliases=_aliases()[:4],
         )
     conn.execute(
@@ -245,6 +262,32 @@ def test_sample_review_rejects_unreviewed_or_changed_content(conn):
             expected_checksum=stage["checksum"],
             reviewer="reviewer",
             review_note="checked",
+            identity_assumption=ASSUMPTION,
             aliases=_aliases(),
         )
     assert conn.execute("SELECT count(*) FROM universe_snapshot").fetchone()[0] == 0
+
+
+def test_bar_probe_compares_exact_session_dates():
+    sessions = [{"date": day} for day in ("2024-10-08", "2024-10-09", "2024-10-10")]
+    complete = summarize_bar_coverage(
+        sessions,
+        date(2024, 10, 9),
+        date(2024, 10, 10),
+        {"AAPL": ["2024-10-08", "2024-10-09", "2024-10-10"]},
+    )
+    assert complete["complete"] is True
+    assert complete["expected_session_count"] == 3
+    incomplete = summarize_bar_coverage(
+        sessions,
+        date(2024, 10, 9),
+        date(2024, 10, 10),
+        {"AAPL": ["2024-10-08", "2024-10-08", "2024-10-11"]},
+    )
+    assert incomplete["complete"] is False
+    assert incomplete["symbols"]["AAPL"]["missing_sessions"] == [
+        "2024-10-09",
+        "2024-10-10",
+    ]
+    assert incomplete["symbols"]["AAPL"]["unexpected_dates"] == ["2024-10-11"]
+    assert incomplete["symbols"]["AAPL"]["duplicate_date_count"] == 1
