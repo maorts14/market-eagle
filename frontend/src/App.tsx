@@ -54,42 +54,43 @@ function BreadthMark({ breadth }: { breadth: number | null }) {
   return <span className="breadth-mark" aria-hidden="true"><span style={{ width: `${(breadth ?? 0) * 100}%` }} /></span>
 }
 
-function SectorTable({ sectors, selectedCode, onSelect }: {
+export function SectorTable({ sectors, selectedCode, onSelect, isPrivateSample = false }: {
   sectors: ExplorerSector[]
   selectedCode: string | null
   onSelect: (code: string) => void
+  isPrivateSample?: boolean
 }) {
-  return <><p className="scroll-hint">Scroll table horizontally for all measures →</p><div className="table-scroll" tabIndex={0} role="region" aria-label="Sector comparison table">
+  return <><p className="scroll-hint">Scroll table horizontally for all measures →</p><div className="table-scroll" tabIndex={0} role="region" aria-label={isPrivateSample ? 'Sample group table' : 'Sector comparison table'}>
     <Table>
       <TableHeader><TableRow>
-        <TableHead className="rank-column">Rank</TableHead>
-        <TableHead>Sector</TableHead>
+        {!isPrivateSample && <TableHead className="rank-column">Rank</TableHead>}
+        <TableHead>{isPrivateSample ? 'Group' : 'Sector'}</TableHead>
         <TableHead className="numeric-column">Up / eligible</TableHead>
         <TableHead className="numeric-column breadth-column">Breadth</TableHead>
         <TableHead className="numeric-column">Return</TableHead>
-        <TableHead className="numeric-column">vs market</TableHead>
+        {!isPrivateSample && <TableHead className="numeric-column">vs market</TableHead>}
       </TableRow></TableHeader>
       <TableBody>{sectors.map((sector, index) => <TableRow key={sector.sector_code} className={sector.sector_code === selectedCode ? 'selected-row' : ''}>
-        <TableCell className="rank-column muted-number">{String(index + 1).padStart(2, '0')}</TableCell>
+        {!isPrivateSample && <TableCell className="rank-column muted-number">{String(index + 1).padStart(2, '0')}</TableCell>}
         <TableCell><button className="sector-select" type="button" aria-current={sector.sector_code === selectedCode ? 'true' : undefined} aria-label={`Inspect ${sector.sector_name} stocks`} onClick={() => onSelect(sector.sector_code)}><span className="sector-name">{sector.sector_name}</span><ArrowRight size={15} aria-hidden="true" /></button></TableCell>
         <TableCell className="numeric-column count-cell">{sector.up_count} / {sector.eligible_count}<span className="sub-count"> of {sector.tracked_count} tracked</span></TableCell>
         <TableCell className="numeric-column breadth-cell"><BreadthMark breadth={sector.breadth} /><span>{percent(sector.breadth)}</span></TableCell>
         <TableCell className={`numeric-column ${valueTone(sector.return)}`}>{percent(sector.return, true)}</TableCell>
-        <TableCell className={`numeric-column ${valueTone(sector.excess_vs_market)}`}>{points(sector.excess_vs_market)}</TableCell>
+        {!isPrivateSample && <TableCell className={`numeric-column ${valueTone(sector.excess_vs_market)}`}>{points(sector.excess_vs_market)}</TableCell>}
       </TableRow>)}</TableBody>
     </Table>
   </div></>
 }
 
-function StockTable({ sector, marketReturn }: { sector: ExplorerSector; marketReturn: number | null }) {
+export function StockTable({ sector, marketReturn, isPrivateSample = false }: { sector: ExplorerSector; marketReturn: number | null; isPrivateSample?: boolean }) {
   if (!sector.stocks.length) return <p className="empty-detail">No stocks have both comparison closes for this window. Try another range.</p>
   return <><p className="scroll-hint">Scroll table horizontally for all measures →</p><div className="table-scroll" tabIndex={0} role="region" aria-label={`${sector.sector_name} stock comparison table`}><Table>
-    <TableHeader><TableRow><TableHead>Stock</TableHead><TableHead className="numeric-column">Return</TableHead><TableHead className="numeric-column">Sector</TableHead><TableHead className="numeric-column">Market</TableHead><TableHead className="numeric-column">Excess</TableHead></TableRow></TableHeader>
+    <TableHeader><TableRow><TableHead>Stock</TableHead><TableHead className="numeric-column">Return</TableHead><TableHead className="numeric-column">{isPrivateSample ? 'Sample' : 'Sector'}</TableHead>{!isPrivateSample && <TableHead className="numeric-column">Market</TableHead>}<TableHead className="numeric-column">{isPrivateSample ? 'vs sample' : 'Excess'}</TableHead></TableRow></TableHeader>
     <TableBody>{sector.stocks.map((stock) => <TableRow key={stock.stock_id}>
       <TableCell><strong className="ticker">{stock.ticker}</strong><span className="stock-name">{stock.name}{stock.final_observation_status === 'provisional' ? ' · provisional' : ''}</span></TableCell>
       <TableCell className={`numeric-column ${valueTone(stock.return)}`}>{percent(stock.return, true)}</TableCell>
       <TableCell className="numeric-column secondary-value">{percent(sector.return, true)}</TableCell>
-      <TableCell className="numeric-column secondary-value">{percent(marketReturn, true)}</TableCell>
+      {!isPrivateSample && <TableCell className="numeric-column secondary-value">{percent(marketReturn, true)}</TableCell>}
       <TableCell className={`numeric-column excess-value ${valueTone(stock.excess_vs_sector)}`}>{points(stock.excess_vs_sector)}</TableCell>
     </TableRow>)}</TableBody>
   </Table></div></>
@@ -150,9 +151,9 @@ function App() {
       {error && <div className="error-banner" role="alert"><div><strong>Window unavailable</strong><p>{error}</p></div><Button variant="outline" size="sm" onClick={() => { setLoading(true); setRequestKey((key) => key + 1) }}><RefreshCw size={14} aria-hidden="true" />Retry</Button></div>}
       {loading && <div className="loading-layout" aria-label="Loading research results"><Skeleton className="h-25 w-full" /><div><Skeleton className="h-80 w-full" /><Skeleton className="h-80 w-full" /></div></div>}
       {!loading && result && <>
-        <section className="summary-line" aria-label="Market summary"><div className="summary-measure"><span>{isPrivateSample ? 'Equal-weight sample return' : 'Equal-weight market return'}</span><strong className={valueTone(result.market.return)}>{percent(result.market.return, true)}</strong>{result.market.return !== null && (result.market.return >= 0 ? <ArrowUpRight size={18} aria-hidden="true" /> : <ArrowDownRight size={18} aria-hidden="true" />)}</div><Separator orientation="vertical" className="summary-separator" /><div className="summary-measure"><span>Eligible stocks</span><strong>{result.market.eligible_count} <small>/ {result.catalog.tracked_count}</small></strong></div><div className="summary-context">{result.market.excluded_count} excluded for missing endpoints</div></section>
-        <div className="research-grid"><section className="sector-panel" aria-labelledby="sector-heading"><div className="panel-heading"><div><h2 id="sector-heading">{isPrivateSample ? 'Sample group' : 'Sectors'}</h2><p>{isPrivateSample ? 'Unclassified stocks · select the row to inspect names' : 'Ranked by breadth · select a row to inspect stocks'}</p></div><span className="panel-count">{isPrivateSample ? `${result.sectors.length} group` : `${result.sectors.length} sectors`}</span></div><SectorTable sectors={result.sectors} selectedCode={selectedCode} onSelect={setSelectedCode} /><div className="table-footnote">Breadth uses eligible stocks with a strictly positive return.</div></section>
-          <section className="detail-panel" aria-labelledby="detail-heading"><div className="panel-heading detail-heading"><div><h2 id="detail-heading">{selected ? selected.sector_name : 'Selected sector'}</h2><p>{selected ? `${selected.eligible_count} of ${selected.tracked_count} stocks eligible` : 'Choose a sector to inspect its stocks'}</p></div>{selected && <Badge variant="secondary" className="sector-code">{selected.sector_code}</Badge>}</div>{selected && <><div className="detail-summary"><div><span>Sector breadth</span><strong>{percent(selected.breadth)}</strong></div><div><span>Equal-weight return</span><strong className={valueTone(selected.return)}>{percent(selected.return, true)}</strong></div><div><span>vs market</span><strong className={valueTone(selected.excess_vs_market)}>{points(selected.excess_vs_market)}</strong></div></div><div className="stock-heading"><h3>Leading stocks</h3><span>Ranked by excess vs sector</span></div><StockTable sector={selected} marketReturn={result.market.return} /></>}</section></div>
+        <section className="summary-line" aria-label={isPrivateSample ? 'Sample summary' : 'Market summary'}><div className="summary-measure"><span>{isPrivateSample ? 'Equal-weight sample return' : 'Equal-weight market return'}</span><strong className={valueTone(result.market.return)}>{percent(result.market.return, true)}</strong>{result.market.return !== null && (result.market.return >= 0 ? <ArrowUpRight size={18} aria-hidden="true" /> : <ArrowDownRight size={18} aria-hidden="true" />)}</div><Separator orientation="vertical" className="summary-separator" /><div className="summary-measure"><span>Eligible stocks</span><strong>{result.market.eligible_count} <small>/ {result.catalog.tracked_count}</small></strong></div><div className="summary-context">{result.market.excluded_count} excluded for missing endpoints</div></section>
+        <div className="research-grid"><section className="sector-panel" aria-labelledby="sector-heading"><div className="panel-heading"><div><h2 id="sector-heading">{isPrivateSample ? 'Sample group' : 'Sectors'}</h2><p>{isPrivateSample ? 'Unclassified stocks · select the row to inspect names' : 'Ranked by breadth · select a row to inspect stocks'}</p></div><span className="panel-count">{isPrivateSample ? `${result.sectors.length} group` : `${result.sectors.length} sectors`}</span></div><SectorTable sectors={result.sectors} selectedCode={selectedCode} onSelect={setSelectedCode} isPrivateSample={isPrivateSample} /><div className="table-footnote">Breadth uses eligible stocks with a strictly positive return.</div></section>
+          <section className="detail-panel" aria-labelledby="detail-heading"><div className="panel-heading detail-heading"><div><h2 id="detail-heading">{selected ? selected.sector_name : isPrivateSample ? 'Sample group' : 'Selected sector'}</h2><p>{selected ? `${selected.eligible_count} of ${selected.tracked_count} stocks eligible` : isPrivateSample ? 'Choose the group to inspect its stocks' : 'Choose a sector to inspect its stocks'}</p></div>{selected && <Badge variant="secondary" className="sector-code">{selected.sector_code}</Badge>}</div>{selected && <><div className={`detail-summary${isPrivateSample ? ' sample-summary' : ''}`}><div><span>{isPrivateSample ? 'Sample breadth' : 'Sector breadth'}</span><strong>{percent(selected.breadth)}</strong></div><div><span>Equal-weight return</span><strong className={valueTone(selected.return)}>{percent(selected.return, true)}</strong></div>{!isPrivateSample && <div><span>vs market</span><strong className={valueTone(selected.excess_vs_market)}>{points(selected.excess_vs_market)}</strong></div>}</div><div className="stock-heading"><h3>Leading stocks</h3><span>{isPrivateSample ? 'Ranked by return vs sample' : 'Ranked by excess vs sector'}</span></div><StockTable sector={selected} marketReturn={result.market.return} isPrivateSample={isPrivateSample} /></>}</section></div>
         <footer className="evidence" aria-label="Calculation evidence"><div><h2>Calculation evidence</h2><p>Returns compare the close before the first included session with the final session close. {isPrivateSample ? 'The sample group return is the equal-weight average of eligible stocks.' : 'Sector and market returns are equal-weight averages of eligible stocks.'}</p></div><dl><div><dt>Requested window</dt><dd>{dateLabel(result.requested_window.start)} – {dateLabel(result.requested_window.end)}</dd></div><div><dt>Resolved sessions</dt><dd>{dateLabel(result.resolved_window.first_session)} – {dateLabel(result.resolved_window.last_session)}</dd></div><div><dt>Comparison close</dt><dd>{dateLabel(result.resolved_window.comparison_session)}</dd></div><div><dt>Coverage</dt><dd>{result.market.eligible_count} eligible / {result.catalog.tracked_count} tracked · {result.market.excluded_count} excluded</dd></div><div><dt>Data source / feed</dt><dd>{result.data.source} / {result.data.feed}</dd></div><div><dt>Price basis</dt><dd>{result.data.price_basis} {result.data.synthetic ? '· fictional, unadjusted sample' : '· live policy unresolved'}</dd></div><div><dt>Data as of</dt><dd>{timeLabel(result.data.as_of)}{result.data.as_of_kind === 'fetched' ? ' · collected at, not provider publication' : result.data.as_of_kind === 'mixed' ? ' · mixed provider publication and collection times' : ''}{result.data.provisional ? ' · provisional' : ''}</dd></div><div><dt>{isPrivateSample ? 'Sample snapshot as of' : 'Current catalog as of'}</dt><dd>{dateLabel(result.catalog.as_of)} · {result.catalog.snapshot_id}</dd></div></dl><p className="evidence-caveat">{result.data.synthetic ? 'Synthetic weekdays are not an exchange calendar. These numbers are fictional and are for interface and calculation verification only.' : 'Return rankings remain untrusted until the production price adjustment basis is chosen.'}</p></footer>
       </>}
     </main>
