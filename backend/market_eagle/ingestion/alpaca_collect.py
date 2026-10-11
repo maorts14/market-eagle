@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 from datetime import date, datetime, timezone
@@ -10,6 +11,9 @@ from pathlib import Path
 
 import httpx
 import psycopg
+from temporalio.client import Client
+from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from .alpaca_preparation import (
     approve_preparation,
@@ -18,6 +22,51 @@ from .alpaca_preparation import (
     stage_preparation,
 )
 from .alpaca_reference import fetch_assets, fetch_calendar
+from .workflows import HistoricalBackfillWorkflow
+
+
+def approved_backfill_request(conn: psycopg.Connection, preparation_id: str) -> dict:
+    """Read the pinned request and require its reviewed FMP catalog to remain current."""
+    request = collection_request(conn, preparation_id)
+    current = conn.execute(
+        "SELECT 1 FROM catalog_current c JOIN universe_snapshot s "
+        "ON s.snapshot_id = c.snapshot_id WHERE c.singleton "
+        "AND s.snapshot_id = %s AND s.source = 'fmp-sp500' "
+        "AND s.validation_state = 'published'",
+        (request["snapshot_id"],),
+    ).fetchone()
+    if current is None:
+        raise ValueError("backfill requires the current reviewed FMP catalog")
+    return request
+
+
+async def start_backfill(request: dict) -> dict:
+    """Start once per preparation, or report its existing Temporal execution."""
+    workflow_id = request["collection_run_id"]
+    client = await Client.connect(
+        os.environ.get("TEMPORAL_ADDRESS", "localhost:7233"),
+        namespace=os.environ.get("TEMPORAL_NAMESPACE", "default"),
+    )
+    try:
+        handle = await client.start_workflow(
+            HistoricalBackfillWorkflow.run,
+            request,
+            id=workflow_id,
+            task_queue="market-backfill",
+            id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+            id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+        )
+    except WorkflowAlreadyStartedError:
+        handle = client.get_workflow_handle(workflow_id)
+    description = await handle.describe()
+    return {
+        "workflow_id": workflow_id,
+        "run_id": description.run_id,
+        "status": description.status.name.lower(),
+        "preparation_id": request["preparation_id"],
+        "snapshot_id": request["snapshot_id"],
+        "stock_count": len(request["stock_ids"]),
+    }
 
 
 def main() -> None:
@@ -29,7 +78,7 @@ def main() -> None:
         command.add_argument("--end", type=date.fromisoformat, required=True)
         if name == "stage":
             command.add_argument("--snapshot-id", required=True)
-    for name in ("review", "request", "draft"):
+    for name in ("review", "request", "draft", "start"):
         command = commands.add_parser(name)
         command.add_argument("preparation_id")
         if name == "draft":
@@ -77,6 +126,8 @@ def main() -> None:
             result = review_preparation(conn, args.preparation_id)
         elif args.command == "request":
             result = collection_request(conn, args.preparation_id)
+        elif args.command == "start":
+            result = approved_backfill_request(conn, args.preparation_id)
         elif args.command == "draft":
             report = review_preparation(conn, args.preparation_id)
             aliases = []
@@ -124,6 +175,8 @@ def main() -> None:
                 review_note=approval["review_note"],
                 aliases=approval["aliases"],
             )
+    if args.command == "start":
+        result = asyncio.run(start_backfill(result))
     print(json.dumps(result, indent=2))
 
 

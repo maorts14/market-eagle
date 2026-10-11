@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import date, datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import psycopg
 import pytest
 from psycopg import sql
+from temporalio.client import WorkflowExecutionStatus
+from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
+from . import alpaca_collect
+from .alpaca_collect import approved_backfill_request, start_backfill
 from .alpaca_preparation import (
     approve_preparation,
     collection_request,
@@ -170,6 +177,7 @@ def test_reviewed_plan_registers_mixed_exchange_aliases_and_calendar(conn):
         aliases=_approval(),
     )
     assert request == collection_request(conn, staged["preparation_id"])
+    assert request == approved_backfill_request(conn, staged["preparation_id"])
     assert request["start"] == "2023-12-29"
     assert {row[2] for row in validate_collection_group(conn, request)} == {
         "NYSE",
@@ -231,6 +239,8 @@ def test_stale_or_unapproved_preparation_cannot_collect(conn):
     )
     with pytest.raises(ValueError, match="not approved"):
         collection_request(conn, staged["preparation_id"])
+    with pytest.raises(ValueError, match="not approved"):
+        approved_backfill_request(conn, staged["preparation_id"])
     conn.execute(
         "INSERT INTO universe_snapshot (snapshot_id, source, taxonomy, as_of, captured_at, "
         "published_at, source_checksum, validation_state) VALUES "
@@ -249,3 +259,94 @@ def test_stale_or_unapproved_preparation_cannot_collect(conn):
             review_note="stale catalog",
             aliases=_approval(),
         )
+
+
+def test_manual_backfill_rejects_preparation_after_catalog_replacement(conn):
+    staged = stage_preparation(
+        conn,
+        snapshot_id="fmp-reviewed",
+        requested_start=date(2024, 1, 1),
+        requested_end=date(2024, 1, 3),
+        assets=_assets(),
+        sessions=_sessions(),
+        fetched_at=datetime(2024, 1, 3, 22, tzinfo=timezone.utc),
+    )
+    approve_preparation(
+        conn,
+        preparation_id=staged["preparation_id"],
+        expected_checksum=staged["checksum"],
+        reviewer="reviewer",
+        review_note="checked share lines",
+        aliases=_approval(),
+    )
+    conn.execute(
+        "INSERT INTO universe_snapshot (snapshot_id, source, taxonomy, as_of, captured_at, "
+        "published_at, source_checksum, validation_state) VALUES "
+        "('fmp-next', 'fmp-sp500', 'fmp-sector-unverified-v1', '2024-01-04', "
+        "'2024-01-04T20:00:00Z', '2024-01-04T20:00:00Z', 'next', 'published')"
+    )
+    conn.execute(
+        "UPDATE catalog_current SET snapshot_id = 'fmp-next' WHERE singleton = true"
+    )
+    with pytest.raises(ValueError, match="current reviewed FMP catalog"):
+        approved_backfill_request(conn, staged["preparation_id"])
+
+
+def test_manual_backfill_uses_pinned_request_and_reuses_workflow_id(monkeypatch):
+    request = {
+        "preparation_id": "approved-preparation",
+        "snapshot_id": "fmp-reviewed",
+        "stock_ids": ["stock-alfa", "stock-beta"],
+        "collection_run_id": "alpaca-backfill:approved-preparation",
+    }
+    calls = []
+    handle = SimpleNamespace(
+        describe=lambda: describe(),
+    )
+
+    async def describe():
+        return SimpleNamespace(run_id="run-one", status=WorkflowExecutionStatus.RUNNING)
+
+    class FakeClient:
+        async def start_workflow(self, workflow, received, **kwargs):
+            calls.append((workflow, received, kwargs))
+            if len(calls) == 2:
+                raise WorkflowAlreadyStartedError(
+                    kwargs["id"], "HistoricalBackfillWorkflow"
+                )
+            return handle
+
+        def get_workflow_handle(self, workflow_id):
+            assert workflow_id == request["collection_run_id"]
+            return handle
+
+    async def connect(address, *, namespace):
+        assert address == "localhost:7233"
+        assert namespace == "default"
+        return FakeClient()
+
+    monkeypatch.setattr(alpaca_collect, "Client", SimpleNamespace(connect=connect))
+    first = asyncio.run(start_backfill(request))
+    retry = asyncio.run(start_backfill(request))
+    assert (
+        first
+        == retry
+        == {
+            "workflow_id": request["collection_run_id"],
+            "run_id": "run-one",
+            "status": "running",
+            "preparation_id": request["preparation_id"],
+            "snapshot_id": request["snapshot_id"],
+            "stock_count": 2,
+        }
+    )
+    assert len(calls) == 2
+    for workflow, received, options in calls:
+        assert workflow is alpaca_collect.HistoricalBackfillWorkflow.run
+        assert received is request
+        assert options == {
+            "id": request["collection_run_id"],
+            "task_queue": "market-backfill",
+            "id_reuse_policy": WorkflowIDReusePolicy.REJECT_DUPLICATE,
+            "id_conflict_policy": WorkflowIDConflictPolicy.USE_EXISTING,
+        }
