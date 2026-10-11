@@ -76,6 +76,8 @@ class OpenRouterResearchModel:
             max_tokens=2048 if structured else 512,
             **options,
         )
+        if not response.choices:
+            raise ValueError("OpenRouter returned no completion choices")
         choice = response.choices[0]
         if choice.finish_reason != "stop" or not choice.message.content:
             raise ValueError("OpenRouter did not return a complete text response")
