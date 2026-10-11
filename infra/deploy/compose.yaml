@@ -1,5 +1,11 @@
 name: market-eagle-private
 
+x-logging: &bounded-logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
     image: postgres:16.8@sha256:301bcb60b8a3ee4ab7e147932723e3abd1cef53516ce5210b39fd9fe5e3602ae
@@ -21,6 +27,7 @@ services:
       timeout: 3s
       retries: 12
     restart: unless-stopped
+    logging: *bounded-logs
     networks: [private]
 
   temporal:
@@ -50,6 +57,7 @@ services:
       start_period: 60s
       retries: 12
     restart: unless-stopped
+    logging: *bounded-logs
     networks: [private]
 
   api:
@@ -86,6 +94,7 @@ services:
       start_period: 30s
       retries: 6
     restart: unless-stopped
+    logging: *bounded-logs
     networks: [private]
 
   web:
@@ -108,6 +117,7 @@ services:
       timeout: 3s
       retries: 6
     restart: unless-stopped
+    logging: *bounded-logs
     networks: [private]
 
   ingestion:
@@ -131,6 +141,7 @@ services:
       - alpaca_secret_key
       - fmp_key
     restart: unless-stopped
+    logging: *bounded-logs
     networks: [private]
 
   agent:
@@ -158,6 +169,7 @@ services:
       - agent_store_pgpass
       - openrouter_key
     restart: unless-stopped
+    logging: *bounded-logs
     networks: [private]
 
   temporal-ui:
@@ -171,6 +183,7 @@ services:
     ports:
       - "127.0.0.1:${TEMPORAL_UI_PORT:-18081}:8080"
     restart: unless-stopped
+    logging: *bounded-logs
     networks: [private]
 
   migrate-app:
@@ -247,6 +260,23 @@ services:
       TEMPORAL_NAMESPACE: market-eagle-private
     volumes:
       - ./bootstrap-namespace.sh:/scripts/bootstrap-namespace.sh:ro
+    restart: "no"
+    networks: [private]
+
+  verify-pollers:
+    profiles: [maintenance]
+    image: temporalio/admin-tools:1.27.2-tctl-1.18.2-cli-1.3.0@sha256:b5ae59dae6ea00c22fc2bdf04a2cfaf59e3e036b8b09ca777f99e2c871396fa2
+    entrypoint: ["/bin/sh", "/scripts/verify-pollers.sh"]
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: market-eagle-private
+      CHECK_COLLECTION: ${CHECK_COLLECTION:-0}
+      POLLER_ATTEMPTS: ${POLLER_ATTEMPTS:-12}
+    volumes:
+      - ./verify-pollers.sh:/scripts/verify-pollers.sh:ro
     restart: "no"
     networks: [private]
 

@@ -6,7 +6,7 @@ This implements the private runtime and reviewed bootstrap from [ADR 0001](../..
 
 `Dockerfile.backend` builds one backend image for API, collection worker, agent worker, and application migrations. `Dockerfile.web` runs `npm ci` from the committed lockfile and builds both explorer and agent in API mode; it serves the bundle through Nginx. Both Dockerfiles pin their base images by digest and label the `SOURCE_REVISION`. Set that to the reviewed Git commit, tag each built application image with the same revision, then record and deploy its immutable image digest. The backend Python dependencies are currently ranges in `backend/pyproject.toml`; a dependency lock or reviewed image digest is required for reproducible rebuilds.
 
-`compose.yaml` defines PostgreSQL, a non-`auto-setup` Temporal server, API, agent worker, and web gateway. Only the gateway publishes a default host port, and it binds `127.0.0.1`. Temporal UI is an optional operator profile with a separate loopback port. Collection is behind the `collection` profile and does not start in a default `up`. **Do not activate collection simply to test Compose.** The current worker has a process-local provider rate limiter, so this stack allows only one collection process.
+`compose.yaml` defines PostgreSQL, a non-`auto-setup` Temporal server, API, agent worker, and web gateway. Only the gateway publishes a default host port, and it binds `127.0.0.1`. Temporal UI is an optional operator profile with a separate loopback port. Collection is behind the `collection` profile and does not start in a default `up`. **Do not activate collection simply to test Compose.** The current worker has a process-local provider rate limiter, so this stack allows only one collection process. Long-running containers use Docker's `json-file` driver with five 10 MiB files each; this bounds local container logs, but it is not a metrics or alerting system.
 
 The `003` PostgreSQL-store migration uses a read-only market `DATABASE_URL` and a separate `AGENT_DATABASE_URL` for conversation writes. Both API and agent worker receive these URLs and their narrowly scoped password files. The old `AGENT_STORE_PATH` SQLite file is not mounted or configured. The `004` Alpaca preparation and `005` private sample tables are included in the ingestion grants.
 
@@ -46,11 +46,16 @@ compose --profile maintenance run --rm bootstrap-temporal
 compose up -d temporal
 compose --profile maintenance run --rm bootstrap-namespace
 compose up -d api agent web
+compose --profile maintenance run --rm verify-pollers
 ```
 
 `bootstrap-db` sets or rotates passwords from the mounted secret files, creates databases with `app_migrator` or `temporal_service` as owner, and removes public database access. `migrate-app` applies `001` through `005` as the application owner. `bootstrap-grants` resets runtime-role table and sequence privileges, then grants the reader only market projections, the agent only its conversation tables and identity sequences, and ingestion only market/catalog/preparation/sample tables plus the selected-bar view. Run `bootstrap-grants` after any future migration that adds runtime objects. The maintenance jobs must finish successfully before the runtime is started. They are not normal startup dependencies and never run automatically on container restart.
 
 The API keeps `/api/v1/health` for process liveness. `/api/v1/ready` checks read access to the market view, agent-store access, and a Temporal namespace RPC. Compose uses readiness for its API healthcheck and waits for it before starting the web gateway. A failed check returns HTTP 503 without credentials or driver diagnostics. Temporal's own Compose healthcheck only checks its listener; API readiness provides the dependency check.
+
+`verify-pollers` makes read-only Temporal RPCs. It waits up to one minute for recent (within 60 seconds) workflow and activity polls on `market-eagle-agent`, then fails with the missing queue names. It starts Temporal if necessary but does not start either worker. After collection has been deliberately enabled and its worker started, run `compose --profile maintenance run --rm -e CHECK_COLLECTION=1 verify-pollers` to include `market-backfill`, `market-session`, and `market-catalog`. A successful process start alone does not prove these queues are being polled. This check does not schedule a workflow or call a provider.
+
+For a dependency-recovery drill on a disposable or approved private deployment, record the initial API readiness and `verify-pollers` result; stop Temporal, confirm `/api/v1/ready` returns 503 while `/api/v1/health` remains 200, restart Temporal, and rerun both checks. Also restart the API and agent containers and verify they return to healthy/polling states. Do not use this drill against an active collection run without a reviewed interruption plan. Record the result and any worker reconnection failure in the release log.
 
 ## Configuration and local dry-run
 
