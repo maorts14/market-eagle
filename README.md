@@ -39,7 +39,24 @@ Temporal gRPC at `localhost:7233`, and the UI at
 .venv/Scripts/python dev.py down         # stop services without deleting data
 ```
 
-After `integration`, start `dev.py api` in one terminal and `npm --prefix frontend run dev` in another. To use the API rather than the browser's explicitly fictional fixture adapter, set `VITE_EXPLORER_MODE=api` for the frontend process. The API uses a separate read-only PostgreSQL role; its generated local password stays in ignored `infra/.env`. The fictional fixture is repeatable, and the integration gate compares two explorer windows through PostgreSQL and HTTP with the committed calculation results.
+For a hands-on test of both HTTP adapters against the fictional fixture, run
+`python dev.py integration` once, then start three separate terminals:
+
+```powershell
+python dev.py api
+python dev.py agent-worker
+$env:VITE_SYNTHETIC_API_TEST='1'; npm --prefix frontend run dev
+```
+
+The test mode opens on December 2025, within the committed observations, and
+labels every result as fictional. The agent worker needs `OPENROUTER_API_KEY`
+and `OPENROUTER_MODEL` in ignored `infra/.env` for free-text questions. The
+explorer works without a model key. The UI refuses a response from a source
+other than `synthetic-v1` in this mode. Clear `VITE_SYNTHETIC_API_TEST` for the
+ordinary frontend modes described in [frontend/README.md](frontend/README.md).
+The API uses a separate read-only PostgreSQL role; its generated local password
+stays in ignored `infra/.env`. The integration gate compares two explorer windows
+through PostgreSQL and HTTP with the committed calculation results.
 
 The five-stock, two-year `synthetic-v1` dataset is for CI and this local
 hands-on **test environment**. It contains no real market prices. Run
