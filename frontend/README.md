@@ -12,7 +12,19 @@ npm run dev
 
 The default mode reads copied files from `public/fixtures/`. They are the explicitly fictional `fixtures/synthetic-v1` history. The sample shortcuts end on 2025-12-31; custom dates are calculated from the same CSV observations. The sample calendar contains weekdays, including exchange holidays. The UI labels all results as synthetic.
 
-To use the v1 explorer route, set `VITE_EXPLORER_MODE=api` before starting Vite. The dev server proxies `/api` to `http://127.0.0.1:8000`; a deployed frontend needs an equivalent same-origin route. In API mode, the shortcuts use the current UTC date. `src/lib/explorer.ts` is the adapter boundary, and `ExplorerResponse` mirrors the v1 response. The backend service can return additional fields such as exclusions and `return_rankings_trusted` without affecting the UI.
+To use the v1 explorer route, set `VITE_EXPLORER_MODE=api` before starting Vite. The dev server proxies `/api` to `http://127.0.0.1:8000`; a deployed frontend needs an equivalent same-origin route. In ordinary API mode, the shortcuts use the current UTC date. `src/lib/explorer.ts` is the adapter boundary, and `ExplorerResponse` mirrors the v1 response. The backend service can return additional fields such as exclusions and `return_rankings_trusted` without affecting the UI.
+
+### Hands-on synthetic API test
+
+Use an isolated local test database with the committed `synthetic-v1` fixture. Leave `MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID` unset in `infra/.env`; the real Alpaca sample is not part of this mode. From the repository root, run `python dev.py integration` to load the fictional data, then start these in separate terminals:
+
+```powershell
+python dev.py api
+python dev.py agent-worker
+$env:VITE_SYNTHETIC_API_TEST='1'; npm --prefix frontend run dev
+```
+
+The agent worker needs the `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` settings described below. `VITE_SYNTHETIC_API_TEST=1` selects the real explorer and agent HTTP adapters, sets the initial window and shortcuts within 2024–2025, and offers a December 2025 example question. The UI labels the data fictional and withholds explorer or agent results that do not identify as `synthetic-v1`. Clear the flag for the ordinary frontend modes. This is a local test setup, separate from the actual app deployment.
 
 When the API explicitly selects a published private Alpaca validation snapshot,
 the workbench labels it as a five-stock sample outside the S&P 500 catalog.

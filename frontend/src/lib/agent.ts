@@ -1,7 +1,8 @@
 import expected from './agent-expected.json'
 import { getFixtureExplorer } from './explorer'
+import { agentMode } from './mode'
 
-export const agentMode = import.meta.env.VITE_AGENT_MODE === 'api' ? 'api' : 'fixture'
+export { agentMode }
 export const exampleQuestion = 'Which stock gained most while daily dollar trading volume exceeded $100,000 on at least 80% of observed days last month?'
 export const followUpQuestion = 'How many observed days qualified for EPSI?'
 

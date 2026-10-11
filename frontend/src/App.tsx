@@ -8,21 +8,12 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getExplorer, type ExplorerResponse, type ExplorerSector, type WindowDates } from '@/lib/explorer'
+import { explorerMode, isSyntheticTestData, syntheticApiTest } from '@/lib/mode'
+import { researchDateOptions } from '@/lib/researchDates'
 import './App.css'
 
-const fixtureMode = import.meta.env.VITE_EXPLORER_MODE !== 'api'
-const sampleEnd = fixtureMode ? '2025-12-31' : new Date().toISOString().slice(0, 10)
-const monthStart = (monthsBefore: number) => {
-  const date = new Date(`${sampleEnd}T12:00:00Z`)
-  date.setUTCDate(1)
-  date.setUTCMonth(date.getUTCMonth() - monthsBefore)
-  return date.toISOString().slice(0, 10)
-}
-const presets = [
-  { label: '1M', start: monthStart(0), end: sampleEnd },
-  { label: '3M', start: monthStart(2), end: sampleEnd },
-  { label: '1Y', start: monthStart(11), end: sampleEnd },
-]
+const fixtureMode = explorerMode === 'fixture'
+const { initialWindow, presets } = researchDateOptions(explorerMode, syntheticApiTest, new Date().toISOString().slice(0, 10))
 
 function percent(value: number | null, signed = false) {
   if (value === null) return '—'
@@ -97,7 +88,7 @@ export function StockTable({ sector, marketReturn, isPrivateSample = false }: { 
 }
 
 function App() {
-  const [draft, setDraft] = useState<WindowDates>({ start: monthStart(0), end: sampleEnd })
+  const [draft, setDraft] = useState<WindowDates>(initialWindow)
   const [window, setWindow] = useState<WindowDates>(draft)
   const [result, setResult] = useState<ExplorerResponse | null>(null)
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
@@ -109,6 +100,9 @@ function App() {
     let active = true
     getExplorer(window).then((data) => {
       if (!active) return
+      if (syntheticApiTest && !isSyntheticTestData(data.data)) {
+        throw new Error('The API is not serving synthetic-v1. Check the isolated test database and server configuration.')
+      }
       setResult(data)
       setSelectedCode((current) => data.sectors.some((sector) => sector.sector_code === current) ? current : (data.sectors[0]?.sector_code ?? null))
       setError('')
@@ -122,9 +116,9 @@ function App() {
 
   const selected = result?.sectors.find((sector) => sector.sector_code === selectedCode) ?? null
   const selectedPreset = presets.find((preset) => preset.start === window.start && preset.end === window.end)?.label
-  const isSynthetic = result?.data.synthetic ?? import.meta.env.VITE_EXPLORER_MODE !== 'api'
+  const isSynthetic = result?.data.synthetic ?? fixtureMode
   const isPrivateSample = result?.catalog.scope === 'private_five_stock_sample'
-  const environmentLabel = result ? (result.data.synthetic ? 'SYNTHETIC SAMPLE' : isPrivateSample ? 'PRIVATE VALIDATION SAMPLE' : 'MARKET DATA') : (fixtureMode ? 'SYNTHETIC SAMPLE' : 'API MODE')
+  const environmentLabel = syntheticApiTest ? 'SYNTHETIC API TEST' : result ? (result.data.synthetic ? 'SYNTHETIC SAMPLE' : isPrivateSample ? 'PRIVATE VALIDATION SAMPLE' : 'MARKET DATA') : (fixtureMode ? 'SYNTHETIC SAMPLE' : 'API MODE')
 
   function applyWindow(next: WindowDates) {
     setDraft(next)
@@ -146,8 +140,8 @@ function App() {
     <main className="workspace">
       <div className="heading-row"><div><h1>{isPrivateSample ? 'Five-stock validation sample' : 'Sector breadth'}</h1><p className="page-intro">{isPrivateSample ? 'Private market-data test. These five stocks are grouped without sector classification and are not an S&P 500 catalog.' : 'Compare the share of rising stocks, then inspect the names behind a sector.'}</p></div>{result && <div className="as-of"><span>{result.data.as_of_kind === 'fetched' ? 'COLLECTED AT' : result.data.as_of_kind === 'mixed' ? 'EARLIEST SOURCE TIME' : 'DATA AS OF'}</span><strong>{timeLabel(result.data.as_of)}</strong></div>}</div>
       <section className="control-band" aria-label="Research window"><form className="window-form" onSubmit={submitWindow}><div className="control-label"><CalendarDays size={16} aria-hidden="true" /><span>Window</span></div><label className="date-field"><span>Start</span><Input type="date" value={draft.start} onChange={(event) => setDraft({ ...draft, start: event.target.value })} required /></label><span className="date-arrow" aria-hidden="true">→</span><label className="date-field"><span>End</span><Input type="date" value={draft.end} onChange={(event) => setDraft({ ...draft, end: event.target.value })} required /></label><Button type="submit" disabled={loading}>Apply</Button></form><div className="preset-group" role="group" aria-label="Sample date shortcuts">{presets.map((preset) => <Button key={preset.label} type="button" size="sm" variant={selectedPreset === preset.label ? 'secondary' : 'ghost'} aria-pressed={selectedPreset === preset.label} disabled={loading} onClick={() => applyWindow({ start: preset.start, end: preset.end })}>{preset.label}</Button>)}</div></section>
-      <div className="source-strip" aria-live="polite"><span className="source-primary"><span className="status-dot" />{isSynthetic ? 'Fictional fixture data' : isPrivateSample ? 'Private five-stock sample · not S&P 500' : (result?.data.source ?? 'Waiting for explorer API')}</span><span>{result ? `${result.data.source} · ${result.data.feed}` : 'Loading source'}</span>{result?.data.provisional && <Badge variant="outline" className="provisional-badge">Provisional daily bar</Badge>}<span className="source-note">Live return basis remains unresolved</span></div>
-      <details className="agent-disclosure"><summary><span><MessageSquareText size={17} aria-hidden="true" />Ask Market Eagle</span><small>Research questions and follow-ups</small><ChevronDown size={16} aria-hidden="true" /></summary><AgentResearch /></details>
+      <div className="source-strip" aria-live="polite"><span className="source-primary"><span className="status-dot" />{isSynthetic ? syntheticApiTest ? 'Fictional test data · API' : 'Fictional fixture data' : isPrivateSample ? 'Private five-stock sample · not S&P 500' : syntheticApiTest ? 'Checking synthetic test API' : (result?.data.source ?? 'Waiting for explorer API')}</span><span>{result ? `${result.data.source} · ${result.data.feed}` : 'Loading source'}</span>{result?.data.provisional && <Badge variant="outline" className="provisional-badge">Provisional daily bar</Badge>}<span className="source-note">{syntheticApiTest ? 'Fictional data · not current market prices' : 'Live return basis remains unresolved'}</span></div>
+      {(!syntheticApiTest || result) && <details className="agent-disclosure"><summary><span><MessageSquareText size={17} aria-hidden="true" />Ask Market Eagle</span><small>Research questions and follow-ups</small><ChevronDown size={16} aria-hidden="true" /></summary><AgentResearch /></details>}
       {error && <div className="error-banner" role="alert"><div><strong>Window unavailable</strong><p>{error}</p></div><Button variant="outline" size="sm" onClick={() => { setLoading(true); setRequestKey((key) => key + 1) }}><RefreshCw size={14} aria-hidden="true" />Retry</Button></div>}
       {loading && <div className="loading-layout" aria-label="Loading research results"><Skeleton className="h-25 w-full" /><div><Skeleton className="h-80 w-full" /><Skeleton className="h-80 w-full" /></div></div>}
       {!loading && result && <>

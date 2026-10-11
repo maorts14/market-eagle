@@ -1,3 +1,5 @@
+import { explorerMode } from './mode'
+
 export type WindowDates = { start: string; end: string }
 
 export type ExplorerStock = {
@@ -227,7 +229,7 @@ export async function getFixtureExplorer(window: WindowDates): Promise<ExplorerR
 }
 
 export async function getExplorer(window: WindowDates): Promise<ExplorerResponse> {
-  if (import.meta.env.VITE_EXPLORER_MODE !== 'api') return getFixtureExplorer(window)
+  if (explorerMode === 'fixture') return getFixtureExplorer(window)
   const parameters = new URLSearchParams(window)
   const response = await fetch(`/api/v1/explorer?${parameters}`)
   const payload = await response.json()
