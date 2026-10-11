@@ -95,6 +95,12 @@ def test_chat_completion_uses_fixed_free_model_and_structured_decision():
     request_schema = schema["$defs"]["AnalyticalRequest"]
     assert set(request_schema["required"]) == set(request_schema["properties"])
     assert "default" not in schema["$defs"]["SortSpec"]["properties"]["direction"]
+    assert (
+        schema["$defs"]["FrequencyReduction"]["properties"]["value"]["anyOf"][1][
+            "pattern"
+        ]
+        == r"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$"
+    )
     assert sent[0]["provider"] == {"require_parameters": True}
     assert "validation_feedback" in sent[0]["messages"][1]["content"]
     assert "response_format" not in sent[1]
