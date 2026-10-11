@@ -23,3 +23,5 @@ The architect and trader review architecture and calculation behavior at relevan
 4. Add the agent harness over the same analytical service, then run the required factual, permission, and conversation evaluations. Choose the return price basis before treating live return rankings as trusted.
 
 Each stage is reviewed and merged into `dev` before dependent work relies on it. Provider access, operating limits, and release gates are in [README.md](README.md); deferred choices are in [decision-tree.md](decision-tree.md).
+
+The five-stock history is a deterministic **test environment**, not the actual app's market data. CI and local hands-on testing use the committed fictional fixture and its expected results. Keep its database separate from the real deployment and reject synthetic or isolated five-stock validation catalogs in the real app. The reviewed real catalog and provider policy are separate release gates; an isolated Alpaca sample can validate ingestion without becoming a user-facing universe. See [implementation-contract-v1.md](implementation-contract-v1.md#synthetic-data-contract).

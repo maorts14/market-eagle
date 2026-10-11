@@ -17,7 +17,10 @@ To use the v1 explorer route, set `VITE_EXPLORER_MODE=api` before starting Vite.
 When the API explicitly selects a published private Alpaca validation snapshot,
 the workbench labels it as a five-stock sample outside the S&P 500 catalog.
 Those stocks are grouped as unclassified, so this view checks real-data
-calculation and presentation without claiming a sector taxonomy.
+calculation and presentation without claiming a sector taxonomy. That mode is
+for an isolated test runtime; the actual app deployment must not select it.
+For a hands-on test without real prices, use the fictional fixture adapter or
+the local PostgreSQL `synthetic-v1` fixture.
 
 ## Checks
 

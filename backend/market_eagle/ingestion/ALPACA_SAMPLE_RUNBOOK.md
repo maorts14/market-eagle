@@ -2,6 +2,11 @@
 
 This path checks real SIP daily-bar ingestion before an FMP S&P 500 catalog is available. The five stocks form an operator-selected **private sample**, not an S&P 500 constituent list. It creates a published snapshot with source `alpaca-sample-v1` and taxonomy `sample-unclassified-v1`; it does not change `catalog_current`. Stock IDs are derived from Alpaca asset UUIDs, so repeat stages keep the same IDs. Price observations remain labeled `alpaca/sip/raw`, with collection time recorded as a fetched observation. The registered rights version says paper-account rights are unconfirmed. Keep the database and output private.
 
+Use this path in an isolated ingestion-validation database only. The actual app
+deployment must not serve this five-stock snapshot. The five-stock dataset for
+CI and hands-on no-real-data testing is the separate fictional
+`fixtures/synthetic-v1/` fixture.
+
 Use an application database intended for this validation, with the repository migrations applied. Set `DATABASE_URL`, `ALPACA_API_KEY_ID`, and `ALPACA_API_SECRET_KEY` in the local process environment. Do not put credentials or approval files in the repository. The example dates cover two years ending on the prior completed session; adjust them for the day you run it.
 
 ```powershell
