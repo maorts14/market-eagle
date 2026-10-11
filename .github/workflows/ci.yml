@@ -7,6 +7,34 @@ on:
     branches: [dev]
 
 jobs:
+  private-deployment-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate private Compose profiles, ports, and API mode
+        run: python infra/deploy/check_compose.py
+      - name: Build private backend and web images without credentials
+        env:
+          SOURCE_REVISION: ${{ github.sha }}
+        run: docker compose --env-file infra/deploy/.env.example -f infra/deploy/compose.yaml build api web
+      - name: Smoke-test packaged backend commands and web bundle
+        run: |
+          docker run --rm --entrypoint python \
+            -e DATABASE_URL=postgresql://reader@postgres:5432/market_eagle \
+            -e AGENT_DATABASE_URL=postgresql://agent@postgres:5432/market_eagle \
+            -e MARKET_EAGLE_SOURCE=alpaca -e MARKET_EAGLE_FEED=sip \
+            -e MARKET_EAGLE_PRICE_BASIS=raw -e MARKET_EAGLE_EXCHANGE=US_EQUITY \
+            -e MARKET_EAGLE_AGENT_ENABLED=1 \
+            market-eagle/backend:reviewed-commit \
+            -c 'import market_eagle.app; import market_eagle.agent.worker'
+          docker run --rm --entrypoint python market-eagle/backend:reviewed-commit -m market_eagle.ingestion.bootstrap --help
+          docker run --rm --entrypoint python market-eagle/backend:reviewed-commit -m market_eagle.ingestion.alpaca_sample_cli --help
+          docker run --rm --entrypoint sh market-eagle/web:reviewed-commit -c 'test -s /usr/share/nginx/html/index.html'
+
   synthetic-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 20
