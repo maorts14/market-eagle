@@ -89,8 +89,15 @@ class OpenRouterResearchModel:
         return choice.message.content
 
     def interpret(self, context: dict, *, feedback: str | None = None) -> Decision:
+        instructions = (
+            interpretation_instructions(context)
+            + " The request fields are in the Decision schema below. Use its "
+            "$defs.AnalyticalRequest definition; never ask the user to provide "
+            "the schema.\nDecision JSON schema:\n"
+            + json.dumps(_strict_decision_schema(), separators=(",", ":"))
+        )
         content = self._complete(
-            interpretation_instructions(context),
+            instructions,
             {
                 "question": context["question"],
                 "summary": context["summary"],

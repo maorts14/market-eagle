@@ -91,6 +91,12 @@ def test_chat_completion_uses_fixed_free_model_and_structured_decision():
     assert sent[0]["temperature"] == 0
     assert sent[0]["response_format"]["json_schema"]["strict"] is True
     schema = sent[0]["response_format"]["json_schema"]["schema"]
+    system_instructions = sent[0]["messages"][0]["content"]
+    assert "never ask the user to provide the schema" in system_instructions
+    assert (
+        json.loads(system_instructions.split("\nDecision JSON schema:\n", 1)[1])
+        == schema
+    )
     assert schema["additionalProperties"] is False
     assert set(schema["required"]) == set(schema["properties"])
     request_schema = schema["$defs"]["AnalyticalRequest"]
