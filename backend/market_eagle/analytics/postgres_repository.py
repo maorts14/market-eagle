@@ -138,7 +138,8 @@ class PostgresAnalyticsRepository:
                     synthetic=False,
                 )
             if self.production and snapshot["source"] not in (
-                "fmp-sp500", "public-sp500-provisional-v1"
+                "fmp-sp500",
+                "public-sp500-provisional-v1",
             ):
                 raise AnalyticsError(
                     "test_catalog_unavailable",
