@@ -96,6 +96,7 @@ export function TurnCard({ turn }: { turn: AgentTurn }) {
     <div className="agent-question"><span>Question</span><p>{turn.question}</p></div>
     {activeStatuses.has(turn.status) && <div className="agent-progress" role="status"><span className="agent-pulse" aria-hidden="true" />{turn.status === 'cancel_requested' ? 'Stopping this turn…' : 'Analysis in progress. You can leave and return to this conversation.'}</div>}
     {mismatchedTestResult && <div className="agent-state-message error" role="alert"><strong>Test data mismatch</strong><p>The agent returned data outside synthetic-v1. Check the isolated test worker configuration.</p></div>}
+    {result && turn.status === 'failed' && <div className="agent-state-message error" role="alert"><strong>Turn failed after verification</strong><p>The verified calculation remains available below, but the turn did not complete.</p></div>}
     {result && <div className="agent-answer">
       <div className="agent-result-heading"><span>Verified calculation</span>{result.data.synthetic && <Badge variant="outline">SYNTHETIC</Badge>}{result.catalog.scope === 'private_five_stock_sample' && <Badge variant="outline">PRIVATE FIVE-STOCK SAMPLE · NOT S&amp;P 500</Badge>}</div>
       {result.rows.length > 1 ? <div className="agent-ranked-results">
@@ -112,6 +113,7 @@ export function TurnCard({ turn }: { turn: AgentTurn }) {
       </div> : lead ? <><div className="agent-result-main"><div><strong>{rowTitle(lead)}</strong>{lead.name && <span>{lead.name}</span>}</div><div><span>{metric?.label}</span><strong>{metric?.value}</strong></div></div>{lead.qualifying_days != null && <p className="agent-observation">{lead.qualifying_days} of {lead.observed_usable_days} observed usable days qualified{lead.requested_sessions != null ? ` · ${lead.requested_sessions} sessions requested` : ''}</p>}</> : <p>No rows matched the validated request in the evaluated data.</p>}
       <p className="agent-coverage">{result.coverage_label}. {result.ranking_scope === 'eligible_stocks_only' ? 'Ranking applies to eligible stocks only.' : ''}</p>
       {turn.agent_explanation && <div className="agent-interpretation"><h4>Interpretation</h4><p>{turn.agent_explanation}</p></div>}
+      {turn.status === 'completed' && !turn.agent_explanation && <div className="agent-interpretation"><h4>Interpretation unavailable</h4><p>The verified calculation and source evidence remain available.</p></div>}
       {turn.decision?.assumptions && turn.decision.assumptions.length > 0 && <div className="agent-assumptions"><h4>Assumptions</h4><ul>{turn.decision.assumptions.map((assumption) => <li key={assumption}>{assumption}</li>)}</ul></div>}
       <Evidence result={result} />
     </div>}
