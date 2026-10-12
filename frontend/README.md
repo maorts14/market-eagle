@@ -14,6 +14,8 @@ The default mode reads copied files from `public/fixtures/`. They are the explic
 
 To use the v1 explorer route, set `VITE_EXPLORER_MODE=api` before starting Vite. The dev server proxies `/api` to `http://127.0.0.1:8000`; a deployed frontend needs an equivalent same-origin route. In ordinary API mode, the shortcuts use the current UTC date. `src/lib/explorer.ts` is the adapter boundary, and `ExplorerResponse` mirrors the v1 response. The backend service can return additional fields such as exclusions and `return_rankings_trusted` without affecting the UI.
 
+For a short live-data pilot whose backfill does not yet cover the current month, set `VITE_PILOT_START` and `VITE_PILOT_END` to the reviewed populated dates before starting Vite. The explorer then opens on that window and shows one **Available data** shortcut. These local UI settings do not change server-side collection permissions or claim older price coverage.
+
 ### Hands-on synthetic API test
 
 Use an isolated local test database with the committed `synthetic-v1` fixture. Leave `MARKET_EAGLE_PRIVATE_SAMPLE_SNAPSHOT_ID` unset in `infra/.env`; the real Alpaca sample is not part of this mode. From the repository root, run `python dev.py integration` to load the fictional data, then start these in separate terminals:

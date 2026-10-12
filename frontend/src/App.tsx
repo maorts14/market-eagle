@@ -13,7 +13,14 @@ import { researchDateOptions } from '@/lib/researchDates'
 import './App.css'
 
 const fixtureMode = explorerMode === 'fixture'
-const { initialWindow, presets } = researchDateOptions(explorerMode, syntheticApiTest, new Date().toISOString().slice(0, 10))
+const { initialWindow, presets } = researchDateOptions(
+  explorerMode,
+  syntheticApiTest,
+  new Date().toISOString().slice(0, 10),
+  import.meta.env.VITE_PILOT_START && import.meta.env.VITE_PILOT_END
+    ? { start: import.meta.env.VITE_PILOT_START, end: import.meta.env.VITE_PILOT_END }
+    : undefined,
+)
 
 function percent(value: number | null, signed = false) {
   if (value === null) return '—'
