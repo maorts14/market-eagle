@@ -66,7 +66,7 @@ function Evidence({ result }: { result: TrustedResult }) {
         <div><dt>Source / feed</dt><dd>{result.data.source} / {result.data.feed}</dd></div>
         <div><dt>Price basis</dt><dd>{result.data.price_basis}</dd></div>
         <div><dt>{result.data.as_of_kind === 'fetched' ? 'Collected at' : result.data.as_of_kind === 'mixed' ? 'Earliest source time' : 'Data as of'}</dt><dd>{asOf(result.data.as_of)}{result.data.as_of_kind === 'fetched' ? ' · not provider publication' : result.data.as_of_kind === 'mixed' ? ' · provider and collection times mixed' : ''}{result.data.provisional ? ' · provisional' : ''}</dd></div>
-        <div><dt>Current catalog as of</dt><dd>{shortDate(result.catalog.as_of)} · {result.catalog.snapshot_id}</dd></div>
+        <div><dt>Current catalog as of</dt><dd>{shortDate(result.catalog.as_of)} · {result.catalog.snapshot_id}{result.catalog.provisional ? ' · provisional public membership and sectors' : ''}</dd></div>
         <div><dt>Calculated at</dt><dd>{asOf(result.calculated_at)}</dd></div>
         <div><dt>Matched candidates</dt><dd>{result.matched_count}</dd></div>
       </dl>

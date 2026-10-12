@@ -137,7 +137,10 @@ class PostgresAnalyticsRepository:
                     price_basis=self.price_basis,
                     synthetic=False,
                 )
-            if self.production and snapshot["source"] != "fmp-sp500":
+            if self.production and snapshot["source"] not in (
+                "fmp-sp500",
+                "public-sp500-provisional-v1",
+            ):
                 raise AnalyticsError(
                     "test_catalog_unavailable",
                     "Production requires a reviewed full catalog",

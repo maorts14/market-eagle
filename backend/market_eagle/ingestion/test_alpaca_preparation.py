@@ -288,7 +288,7 @@ def test_manual_backfill_rejects_preparation_after_catalog_replacement(conn):
     conn.execute(
         "UPDATE catalog_current SET snapshot_id = 'fmp-next' WHERE singleton = true"
     )
-    with pytest.raises(ValueError, match="current reviewed FMP catalog"):
+    with pytest.raises(ValueError, match="current reviewed full catalog"):
         approved_backfill_request(conn, staged["preparation_id"])
 
 

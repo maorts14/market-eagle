@@ -77,4 +77,5 @@ class SyntheticFixtureRepository:
             feed=self.manifest["feed"],
             price_basis=self.manifest["price_basis"],
             synthetic=True,
+            catalog_source="synthetic-v1",
         )

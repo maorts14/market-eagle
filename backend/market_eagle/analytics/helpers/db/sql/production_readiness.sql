@@ -7,7 +7,7 @@ SELECT EXISTS (
       ON price_source.source = %s
      AND price_source.feed = %s
     WHERE cc.singleton
-      AND snapshot.source = 'fmp-sp500'
+      AND snapshot.source IN ('fmp-sp500', 'public-sp500-provisional-v1')
       AND snapshot.validation_state = 'published'
       AND NOT price_source.synthetic
       AND (
