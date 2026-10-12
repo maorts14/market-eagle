@@ -16,4 +16,11 @@ describe('research date shortcuts', () => {
   it('keeps the current-date default for the ordinary API', () => {
     expect(researchDateOptions('api', false, '2026-10-11').initialWindow).toEqual({ start: '2026-10-01', end: '2026-10-11' })
   })
+
+  it('opens on an explicitly configured pilot window', () => {
+    expect(researchDateOptions('api', false, '2026-10-12', { start: '2026-10-02', end: '2026-10-09' })).toEqual({
+      initialWindow: { start: '2026-10-02', end: '2026-10-09' },
+      presets: [{ label: 'Available data', start: '2026-10-02', end: '2026-10-09' }],
+    })
+  })
 })

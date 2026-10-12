@@ -1,6 +1,20 @@
 import type { WindowDates } from './explorer'
 
-export function researchDateOptions(explorerMode: 'api' | 'fixture', syntheticApiTest: boolean, today: string) {
+export function researchDateOptions(
+  explorerMode: 'api' | 'fixture',
+  syntheticApiTest: boolean,
+  today: string,
+  pilotWindow?: WindowDates,
+) {
+  if (explorerMode === 'api' && !syntheticApiTest && pilotWindow &&
+      /^\d{4}-\d{2}-\d{2}$/.test(pilotWindow.start) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(pilotWindow.end) &&
+      pilotWindow.start <= pilotWindow.end) {
+    return {
+      initialWindow: pilotWindow,
+      presets: [{ label: 'Available data', ...pilotWindow }],
+    }
+  }
   const end = explorerMode === 'fixture' || syntheticApiTest ? '2025-12-31' : today
   const monthStart = (monthsBefore: number) => {
     const date = new Date(`${end}T12:00:00Z`)
