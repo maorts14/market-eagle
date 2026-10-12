@@ -20,6 +20,8 @@ The current `validate_collection_group` checks the preparation ID, pinned snapsh
 
 Before scheduling, add a reviewed **ongoing-collection approval** tied to the published full-catalog snapshot, approved Alpaca asset IDs/aliases, source/feed/basis, and account rights. It has no routine date expiry or manual renewal. Admission checks the current published snapshot and approval on every pass, plus the target session's reviewed calendar coverage. A newly held FMP stage remains held until separate catalog review publishes it; publication of a different snapshot holds collection until its mappings are reviewed and approved. Source/feed/basis or rights changes also hold collection for review. This is an operating approval, not permission to publish a held catalog.
 
+The ongoing path automatically maintains upcoming session coverage from the selected calendar source and validates each session's source and UTC open/close before use; ordinary calendar progression does not require operator renewal. Missing or conflicting coverage holds collection until resolved.
+
 Before the first price pass on each New York date, a bounded asset-reference check compares the current Alpaca asset ID, symbol, and exchange with every reviewed mapping. Charge this request to the same provider budget and hold price collection if any identity drifts or the check fails. Later passes require that day's successful check and a still-current approved mapping set. This detects changes but does not prove historical identity.
 
 ## Proposed timing and idempotency
