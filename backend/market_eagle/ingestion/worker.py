@@ -22,6 +22,7 @@ from .alpaca import AlpacaRequestError, historical_pages, page_rows
 from .alpaca_preparation import validate_collection_group
 from .fmp import FmpRequestError, fetch_constituents
 from .fmp_stage import stage_constituents
+from .ongoing_collection import validate_ongoing_collection_group
 from .store import ingest_page, missing_pairs, publish_catalog, read_csv
 from .workflows import (
     CatalogPublishWorkflow,
@@ -135,7 +136,11 @@ def collect_group(request: dict) -> dict:
         )
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         try:
-            mappings = validate_collection_group(conn, request)
+            mappings = (
+                validate_ongoing_collection_group(conn, request)
+                if "approval_id" in request
+                else validate_collection_group(conn, request)
+            )
         except ValueError as exc:
             raise ApplicationError(str(exc), non_retryable=True) from exc
         conn.commit()  # End the alias read so each following page has its own transaction.
@@ -225,7 +230,10 @@ def check_coverage(request: dict) -> dict:
     start, end = _request_dates(request)
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         try:
-            validate_collection_group(conn, request)
+            if "approval_id" in request:
+                validate_ongoing_collection_group(conn, request)
+            else:
+                validate_collection_group(conn, request)
         except ValueError as exc:
             raise ApplicationError(str(exc), non_retryable=True) from exc
         return missing_pairs(

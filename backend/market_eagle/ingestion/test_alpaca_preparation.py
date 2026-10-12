@@ -25,9 +25,268 @@ from .alpaca_preparation import (
     stage_preparation,
     validate_collection_group,
 )
+from .ongoing_collection import (
+    approve_ongoing_collection,
+    ongoing_collection_request,
+    validate_ongoing_collection_group,
+)
 from .store import ingest_page
 
 pytestmark = pytest.mark.synthetic_integration
+
+
+def _ongoing_full_catalog(conn):
+    """Seed a reviewed full universe without invoking a provider or backfill."""
+    preparation_id = str(uuid4())
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO data_source (source, feed, rights_version, provider, synthetic, "
+            "private_use_approved) VALUES "
+            "('alpaca', 'sip', 'private-use-reviewed-v1', 'alpaca', false, true)"
+        )
+        cur.executemany(
+            "INSERT INTO security (stock_id, name) VALUES (%s, %s)",
+            [(f"stock-{number:03d}", f"Stock {number}") for number in range(448)],
+        )
+        cur.executemany(
+            "INSERT INTO universe_member (snapshot_id, stock_id, source_ticker, "
+            "taxonomy, sector_code) VALUES ('fmp-reviewed', %s, %s, "
+            "'fmp-sector-unverified-v1', 'Technology')",
+            [(f"stock-{number:03d}", f"S{number:03d}") for number in range(448)],
+        )
+        cur.execute(
+            "INSERT INTO alpaca_collection_preparation (preparation_id, snapshot_id, "
+            "source_checksum, fetched_at, requested_start, requested_end, "
+            "comparison_session, status, reviewed_by, review_note) VALUES "
+            "(%s, 'fmp-reviewed', 'reviewed', '2024-01-03T22:00:00Z', "
+            "'2024-01-02', '2024-01-03', '2023-12-29', 'prepared', 'reviewer', 'checked')",
+            (preparation_id,),
+        )
+        members = [("stock-alfa", "ALFA", "NYSE"), ("stock-beta", "BETA", "NASDAQ")]
+        members += [
+            (f"stock-{number:03d}", f"S{number:03d}", "NYSE") for number in range(448)
+        ]
+        assets = [
+            (stock, symbol, exchange, str(uuid4()))
+            for stock, symbol, exchange in members
+        ]
+        cur.executemany(
+            "INSERT INTO alpaca_preparation_asset (preparation_id, asset_id, symbol, "
+            "exchange, name, asset_status, asset_class) "
+            "VALUES (%s, %s, %s, %s, %s, 'active', 'us_equity')",
+            [
+                (preparation_id, asset_id, symbol, exchange, stock)
+                for stock, symbol, exchange, asset_id in assets
+            ],
+        )
+        cur.executemany(
+            "INSERT INTO alpaca_alias_approval (preparation_id, stock_id, asset_id, "
+            "symbol, exchange, verified_from, evidence) "
+            "VALUES (%s, %s, %s, %s, %s, '2023-12-29', 'reviewed')",
+            [
+                (preparation_id, stock, asset_id, symbol, exchange)
+                for stock, symbol, exchange, asset_id in assets
+            ],
+        )
+        cur.executemany(
+            "INSERT INTO security_symbol (stock_id, ticker, exchange, valid_from, source) "
+            "VALUES (%s, %s, %s, '2023-12-29', 'alpaca')",
+            members,
+        )
+        cur.executemany(
+            "INSERT INTO trading_session (exchange, session_date, session_type, "
+            "open_at, close_at, calendar_source) VALUES ('US_EQUITY', %s, 'regular', "
+            "%s, %s, 'alpaca-trading-calendar')",
+            [
+                ("2024-01-04", "2024-01-04T14:30:00Z", "2024-01-04T21:00:00Z"),
+                ("2024-01-05", "2024-01-05T14:30:00Z", "2024-01-05T21:00:00Z"),
+            ],
+        )
+    return preparation_id
+
+
+def test_ongoing_approval_admits_later_reviewed_sessions_without_renewal(conn):
+    preparation_id = _ongoing_full_catalog(conn)
+    approval_id = approve_ongoing_collection(
+        conn,
+        preparation_id=preparation_id,
+        catalog_source="fmp-sp500",
+        reviewer="operator",
+        review_note="reviewed full mappings and ongoing use",
+    )
+    for target in (date(2024, 1, 4), date(2024, 1, 5)):
+        request = ongoing_collection_request(
+            conn,
+            approval_id,
+            target,
+            f"refresh:{target}:open+60m:fmp-reviewed:alpaca:sip:raw",
+        )
+        assert len(request["stock_ids"]) == 450
+        assert request["start"] == request["end"] == target.isoformat()
+        request["stock_ids"] = request["stock_ids"][:5]
+        assert len(validate_ongoing_collection_group(conn, request)) == 5
+    with pytest.raises(ValueError, match="window"):
+        validate_collection_group(
+            conn,
+            {**request, "preparation_id": preparation_id, "symbol_asof": "2024-01-03"},
+        )
+
+
+def test_ongoing_admission_holds_on_catalog_mapping_or_calendar_drift(conn):
+    preparation_id = _ongoing_full_catalog(conn)
+    approval_id = approve_ongoing_collection(
+        conn,
+        preparation_id=preparation_id,
+        catalog_source="fmp-sp500",
+        reviewer="operator",
+        review_note="reviewed",
+    )
+    target = date(2024, 1, 4)
+    request = ongoing_collection_request(conn, approval_id, target, "stable-run")
+    request["stock_ids"] = request["stock_ids"][:5]
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE trading_session SET calendar_source = 'unreviewed' "
+            "WHERE exchange = 'US_EQUITY' AND session_date = %s",
+            (target,),
+        )
+    with pytest.raises(ValueError, match="session"):
+        validate_ongoing_collection_group(conn, request)
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE trading_session SET calendar_source = 'alpaca-trading-calendar' "
+            "WHERE exchange = 'US_EQUITY' AND session_date = %s",
+            (target,),
+        )
+        cur.execute(
+            "UPDATE security_symbol SET valid_to = '2024-01-03' "
+            "WHERE stock_id = 'stock-447' AND source = 'alpaca'"
+        )
+    with pytest.raises(ValueError, match="mappings"):
+        validate_ongoing_collection_group(conn, request)
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE security_symbol SET valid_to = NULL "
+            "WHERE stock_id = 'stock-447' AND source = 'alpaca'"
+        )
+        cur.execute(
+            "INSERT INTO security_symbol (stock_id, ticker, exchange, valid_from, source) "
+            "VALUES ('stock-447', 'OTHER', 'NYSE', '2024-01-01', 'alpaca')"
+        )
+    with pytest.raises(ValueError, match="mappings"):
+        validate_ongoing_collection_group(conn, request)
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM security_symbol WHERE stock_id = 'stock-447' AND ticker = 'OTHER'"
+        )
+        cur.execute(
+            "INSERT INTO universe_snapshot (snapshot_id, source, taxonomy, as_of, "
+            "captured_at, published_at, source_checksum, validation_state) VALUES "
+            "('new-catalog', 'fmp-sp500', 'fmp-sector-unverified-v1', '2024-01-04', "
+            "'2024-01-04T22:00:00Z', '2024-01-04T22:00:00Z', 'new', 'published')"
+        )
+        cur.execute(
+            "UPDATE catalog_current SET snapshot_id = 'new-catalog' WHERE singleton"
+        )
+    with pytest.raises(ValueError, match="catalog"):
+        validate_ongoing_collection_group(conn, request)
+
+
+def test_ongoing_admission_rejects_unpinned_tuple_and_held_approval(conn):
+    preparation_id = _ongoing_full_catalog(conn)
+    approval_id = approve_ongoing_collection(
+        conn,
+        preparation_id=preparation_id,
+        catalog_source="fmp-sp500",
+        reviewer="operator",
+        review_note="reviewed",
+    )
+    request = ongoing_collection_request(
+        conn, approval_id, date(2024, 1, 4), "stable-run"
+    )
+    request["stock_ids"] = request["stock_ids"][:5]
+    with pytest.raises(ValueError, match="source or catalog"):
+        validate_ongoing_collection_group(conn, {**request, "feed": "iex"})
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE data_source SET private_use_approved = false "
+            "WHERE source = 'alpaca' AND feed = 'sip'"
+        )
+    with pytest.raises(ValueError, match="held"):
+        validate_ongoing_collection_group(conn, request)
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE data_source SET private_use_approved = true "
+            "WHERE source = 'alpaca' AND feed = 'sip'"
+        )
+        cur.execute(
+            "UPDATE data_source SET rights_version = 'changed-rights' "
+            "WHERE source = 'alpaca' AND feed = 'sip'"
+        )
+    with pytest.raises(ValueError, match="held"):
+        validate_ongoing_collection_group(conn, request)
+    assert (
+        approve_ongoing_collection(
+            conn,
+            preparation_id=preparation_id,
+            catalog_source="fmp-sp500",
+            reviewer="operator",
+            review_note="reviewed changed account rights",
+        )
+        == approval_id
+    )
+    assert len(validate_ongoing_collection_group(conn, request)) == 5
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE ongoing_collection_approval SET status = 'held' WHERE approval_id = %s",
+            (approval_id,),
+        )
+    with pytest.raises(ValueError, match="held"):
+        validate_ongoing_collection_group(conn, request)
+
+
+def test_ongoing_approval_rejects_incomplete_full_catalog(conn):
+    preparation_id = str(uuid4())
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO alpaca_collection_preparation (preparation_id, snapshot_id, "
+            "source_checksum, fetched_at, requested_start, requested_end, "
+            "comparison_session, status) VALUES (%s, 'fmp-reviewed', 'reviewed', "
+            "'2024-01-03T22:00:00Z', '2024-01-02', '2024-01-03', '2023-12-29', 'prepared')",
+            (preparation_id,),
+        )
+    with pytest.raises(ValueError, match="full-catalog"):
+        approve_ongoing_collection(
+            conn,
+            preparation_id=preparation_id,
+            catalog_source="fmp-sp500",
+            reviewer="operator",
+            review_note="reviewed",
+        )
+
+
+def test_ongoing_approval_pins_explicit_provisional_source_and_rejects_sample(conn):
+    preparation_id = _ongoing_full_catalog(conn)
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE universe_snapshot SET source = 'public-sp500-provisional-v1' "
+            "WHERE snapshot_id = 'fmp-reviewed'"
+        )
+    approval_id = approve_ongoing_collection(
+        conn,
+        preparation_id=preparation_id,
+        catalog_source="public-sp500-provisional-v1",
+        reviewer="operator",
+        review_note="dated public list and share lines checked",
+    )
+    assert ongoing_collection_request(conn, approval_id, date(2024, 1, 4), "stable-run")
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE universe_snapshot SET source = 'alpaca-sample-v1' "
+            "WHERE snapshot_id = 'fmp-reviewed'"
+        )
+    with pytest.raises(ValueError, match="held"):
+        ongoing_collection_request(conn, approval_id, date(2024, 1, 4), "stable-run")
 
 
 @pytest.fixture
