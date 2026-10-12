@@ -1,4 +1,4 @@
-"""Reviewed bridge from published FMP share lines to Alpaca collection inputs."""
+"""Reviewed bridge from published share lines to Alpaca collection inputs."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import psycopg
 NAMESPACE = UUID("989b9793-f8df-44ed-a226-22ea94f4f65a")
 CALENDAR_EXCHANGE = "US_EQUITY"
 ALLOWED_EXCHANGES = {"NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "NYSEARCA"}
+PRODUCTION_CATALOG_SOURCES = {"fmp-sp500", "public-sp500-provisional-v1"}
 
 
 def _checksum(assets: list[dict], sessions: list[dict]) -> str:
@@ -31,7 +32,7 @@ def stage_preparation(
     sessions: list[dict],
     fetched_at: datetime,
 ) -> dict:
-    """Hold a bounded asset/calendar observation beside one reviewed FMP snapshot."""
+    """Hold a bounded asset/calendar observation beside one reviewed snapshot."""
     if (
         requested_start > requested_end
         or (requested_end - requested_start).days > 2_192
@@ -65,10 +66,11 @@ def stage_preparation(
         )
         catalog = cur.fetchone()
         if catalog is None or not (
-            catalog[0] == "alpaca-sample-v1" or catalog == ("fmp-sp500", True)
+            catalog[0] == "alpaca-sample-v1"
+            or (catalog[0] in PRODUCTION_CATALOG_SOURCES and catalog[1])
         ):
             raise ValueError(
-                "preparation requires a reviewed FMP or private sample snapshot"
+                "preparation requires a current reviewed catalog or private sample snapshot"
             )
         cur.execute(
             "SELECT status FROM alpaca_collection_preparation WHERE preparation_id = %s",
@@ -171,7 +173,7 @@ def review_preparation(conn: psycopg.Connection, preparation_id: str) -> dict:
     candidates = [
         {
             "stock_id": stock_id,
-            "fmp_symbol": symbol,
+            "catalog_symbol": symbol,
             "alpaca_candidates": by_symbol.get(symbol, []),
         }
         for stock_id, symbol in members
@@ -232,9 +234,12 @@ def approve_preparation(
             (snapshot_id,),
         )
         catalog = cur.fetchone()
-        if catalog is None or catalog[0] not in ("fmp-sp500", "alpaca-sample-v1"):
+        if catalog is None or catalog[0] not in (
+            *PRODUCTION_CATALOG_SOURCES,
+            "alpaca-sample-v1",
+        ):
             raise ValueError("prepared catalog is no longer published")
-        if catalog[0] == "fmp-sp500":
+        if catalog[0] in PRODUCTION_CATALOG_SOURCES:
             cur.execute(
                 "SELECT snapshot_id FROM catalog_current WHERE singleton = true"
             )

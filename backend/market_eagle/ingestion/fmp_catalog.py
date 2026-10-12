@@ -11,7 +11,7 @@ import httpx
 import psycopg
 
 from .fmp import FmpRequestError, FmpTransportError, fetch_constituents
-from .fmp_stage import publish_reviewed_stage, review_stage, stage_constituents
+from .fmp_stage import SOURCE, publish_reviewed_stage, review_stage, stage_constituents
 
 
 def approval_draft(report: dict) -> dict:
@@ -82,6 +82,8 @@ def main() -> None:
             result.update(stage_constituents(conn, fetched))
         elif args.command in ("review", "draft"):
             result = review_stage(conn, args.stage_id)
+            if result["source"] != SOURCE:
+                raise ValueError("stage is not an FMP catalog")
             if args.command == "draft":
                 draft = approval_draft(result)
                 args.output.write_text(
@@ -93,6 +95,9 @@ def main() -> None:
                 }
         else:
             approval = json.loads(args.approval_file.read_text(encoding="utf-8"))
+            report = review_stage(conn, approval["stage_id"])
+            if report["source"] != SOURCE:
+                raise ValueError("stage is not an FMP catalog")
             snapshot_id = publish_reviewed_stage(
                 conn,
                 stage_id=approval["stage_id"],

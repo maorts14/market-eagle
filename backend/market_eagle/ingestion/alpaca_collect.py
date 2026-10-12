@@ -1,4 +1,4 @@
-"""Prepare a reviewed Alpaca alias/calendar plan for a published FMP catalog."""
+"""Prepare a reviewed Alpaca alias/calendar plan for a published catalog."""
 
 from __future__ import annotations
 
@@ -26,17 +26,17 @@ from .workflows import HistoricalBackfillWorkflow
 
 
 def approved_backfill_request(conn: psycopg.Connection, preparation_id: str) -> dict:
-    """Read the pinned request and require its reviewed FMP catalog to remain current."""
+    """Read the pinned request and require its reviewed catalog to remain current."""
     request = collection_request(conn, preparation_id)
     current = conn.execute(
         "SELECT 1 FROM catalog_current c JOIN universe_snapshot s "
         "ON s.snapshot_id = c.snapshot_id WHERE c.singleton "
-        "AND s.snapshot_id = %s AND s.source = 'fmp-sp500' "
+        "AND s.snapshot_id = %s AND s.source IN ('fmp-sp500', 'public-sp500-provisional-v1') "
         "AND s.validation_state = 'published'",
         (request["snapshot_id"],),
     ).fetchone()
     if current is None:
-        raise ValueError("backfill requires the current reviewed FMP catalog")
+        raise ValueError("backfill requires the current reviewed full catalog")
     return request
 
 

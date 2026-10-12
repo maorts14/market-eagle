@@ -42,6 +42,8 @@ export type ExplorerResponse = {
     as_of: string
     published_at: string
     tracked_count: number
+    source?: string
+    provisional?: boolean
     scope?: 'private_five_stock_sample'
   }
   data: {

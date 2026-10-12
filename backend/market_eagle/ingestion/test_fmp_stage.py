@@ -13,7 +13,14 @@ from psycopg import sql
 
 from .fmp import FmpFetch, checksum_rows, normalize_constituents
 from .fmp_catalog import approval_draft
-from .fmp_stage import publish_reviewed_stage, review_stage, stage_constituents
+from .fmp_stage import (
+    PROVISIONAL_SOURCE,
+    PROVISIONAL_TAXONOMY,
+    publish_reviewed_stage,
+    review_stage,
+    stage_constituents,
+)
+from .public_catalog import read_candidate
 
 pytestmark = pytest.mark.synthetic_integration
 
@@ -65,6 +72,43 @@ def _fetch(
         ]
     )
     return FmpFetch(rows, fetched_at, 100, checksum_rows(rows), {})
+
+
+def test_dated_public_candidate_has_full_unique_share_lines():
+    fetched = read_candidate(
+        Path("data/catalog/public_sp500_2026-10-12.csv"),
+        datetime(2026, 10, 12, tzinfo=timezone.utc).date(),
+    )
+    assert len(fetched.rows) == 503
+    assert fetched.checksum == checksum_rows(fetched.rows)
+    assert len({row["symbol"] for row in fetched.rows}) == 503
+
+
+def test_reviewed_public_stage_keeps_distinct_source_and_taxonomy(conn):
+    stage = stage_constituents(
+        conn,
+        _fetch(),
+        minimum_count=2,
+        source=PROVISIONAL_SOURCE,
+        endpoint="https://example.com/dated-public-candidate.csv",
+    )
+    report = review_stage(conn, stage["stage_id"])
+    assert report["source"] == PROVISIONAL_SOURCE
+    assert report["sector_taxonomy"] == PROVISIONAL_TAXONOMY
+    assert report["source_location"] == "https://example.com/dated-public-candidate.csv"
+    snapshot_id = publish_reviewed_stage(
+        conn,
+        stage_id=stage["stage_id"],
+        expected_checksum=stage["checksum"],
+        reviewer="operator",
+        review_note="checked share lines and sectors against an independent dated source",
+        decisions={"ALFA": "new", "ALFB": "new"},
+    )
+    snapshot = conn.execute(
+        "SELECT source, taxonomy FROM universe_snapshot WHERE snapshot_id = %s",
+        (snapshot_id,),
+    ).fetchone()
+    assert snapshot == (PROVISIONAL_SOURCE, PROVISIONAL_TAXONOMY)
 
 
 def test_manual_gate_and_stable_share_line_identity(conn):

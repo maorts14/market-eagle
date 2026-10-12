@@ -17,6 +17,8 @@ The worker also exposes a `market-catalog` queue. `CatalogPublishWorkflow` can p
 
 ## FMP constituent staging and review
 
+For the accepted first private version, see the [dated provisional public catalog and its audit](../../../data/catalog/README.md). FMP's constituent endpoint returned HTTP 402 on the current free account; the provisional route uses the same held-stage and explicit-publication checks with a distinct source label. It does not turn the five-stock test fixture into a production catalog.
+
 The [FMP current constituent endpoint](https://site.financialmodelingprep.com/developer/docs/stable/sp-500) supplies source symbols, names, sectors, sub-sectors, CIKs, and index-addition dates. It does not supply an exchange or a provider publication time. The FMP sector taxonomy is recorded as `fmp-sector-unverified-v1`, never as official GICS. `dateFirstAdded` is index membership evidence, not a listing date. CIK is company-level review evidence and does not merge distinct share lines into one stock ID.
 
 Set `FMP_API_KEY` from an FMP account and `DATABASE_URL` for the application database. Do not commit the key or approval file. Apply the migration runner first; it applies each numbered migration exactly once with checksum checks.

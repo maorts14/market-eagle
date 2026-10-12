@@ -58,6 +58,8 @@ def test_production_api_requires_database(monkeypatch) -> None:
         ("fmp-sp500", True, 0, "synthetic_data_unavailable"),
         ("fmp-sp500", None, 0, "synthetic_data_unavailable"),
         ("fmp-sp500", False, 5, "incomplete_catalog"),
+        ("public-sp500-provisional-v1", True, 0, "synthetic_data_unavailable"),
+        ("public-sp500-provisional-v1", False, 5, "incomplete_catalog"),
     ],
 )
 def test_production_rejects_test_rows_in_database(

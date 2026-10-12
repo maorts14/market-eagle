@@ -1,4 +1,4 @@
-"""Stage FMP membership, inspect changes, and publish only after explicit review."""
+"""Stage membership, inspect changes, and publish only after explicit review."""
 
 from __future__ import annotations
 
@@ -12,20 +12,35 @@ from .fmp import ENDPOINT, FmpFetch, checksum_rows
 
 SOURCE = "fmp-sp500"
 TAXONOMY = "fmp-sector-unverified-v1"
+PROVISIONAL_SOURCE = "public-sp500-provisional-v1"
+PROVISIONAL_TAXONOMY = "community-sector-provisional-v1"
+CATALOG_TAXONOMIES = {
+    SOURCE: TAXONOMY,
+    PROVISIONAL_SOURCE: PROVISIONAL_TAXONOMY,
+}
 EXCHANGE = "UNVERIFIED"
 STAGE_NAMESPACE = UUID("1a9c15b1-e445-4135-8ccb-f0736b8861f5")
 
 
 def stage_constituents(
-    conn: psycopg.Connection, fetched: FmpFetch, minimum_count: int = 450
+    conn: psycopg.Connection,
+    fetched: FmpFetch,
+    minimum_count: int = 450,
+    *,
+    source: str = SOURCE,
+    endpoint: str = ENDPOINT,
 ) -> dict:
     """Persist a normalized candidate and existing exact-alias suggestions, not a publication."""
     if not 1 <= minimum_count <= 700:
         raise ValueError("minimum_count must be between 1 and 700")
+    if source not in CATALOG_TAXONOMIES:
+        raise ValueError("unsupported reviewed catalog source")
+    if not endpoint:
+        raise ValueError("catalog source location is required")
     if fetched.checksum != checksum_rows(fetched.rows):
-        raise ValueError("FMP staged checksum does not match rows")
+        raise ValueError("staged checksum does not match rows")
     observed_on = fetched.fetched_at.astimezone(timezone.utc).date()
-    stage_id = uuid5(STAGE_NAMESPACE, f"{SOURCE}:{observed_on}:{fetched.checksum}")
+    stage_id = uuid5(STAGE_NAMESPACE, f"{source}:{observed_on}:{fetched.checksum}")
     issues = (
         []
         if len(fetched.rows) >= minimum_count
@@ -46,7 +61,7 @@ def stage_constituents(
         cur.execute(
             "SELECT ticker, stock_id FROM security_symbol WHERE source = %s AND exchange = %s "
             "AND valid_from <= %s AND (valid_to IS NULL OR valid_to >= %s)",
-            (SOURCE, EXCHANGE, observed_on, observed_on),
+            (source, EXCHANGE, observed_on, observed_on),
         )
         aliases = dict(cur.fetchall())
         cur.execute(
@@ -55,8 +70,8 @@ def stage_constituents(
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'held', %s)",
             (
                 stage_id,
-                SOURCE,
-                ENDPOINT,
+                source,
+                endpoint,
                 fetched.fetched_at,
                 fetched.checksum,
                 baseline_snapshot_id,
@@ -97,7 +112,7 @@ def review_stage(conn: psycopg.Connection, stage_id: str) -> dict:
     with conn.cursor() as cur:
         cur.execute(
             "SELECT source_checksum, fetched_at, row_count, minimum_count, status, "
-            "validation_issues, published_snapshot_id, baseline_snapshot_id "
+            "validation_issues, published_snapshot_id, baseline_snapshot_id, source, endpoint "
             "FROM catalog_stage WHERE stage_id = %s",
             (stage_id,),
         )
@@ -135,8 +150,9 @@ def review_stage(conn: psycopg.Connection, stage_id: str) -> dict:
         "validation_issues": stage[5],
         "published_snapshot_id": stage[6],
         "baseline_snapshot_id": stage[7],
-        "source": SOURCE,
-        "sector_taxonomy": TAXONOMY,
+        "source": stage[8],
+        "source_location": stage[9],
+        "sector_taxonomy": CATALOG_TAXONOMIES[stage[8]],
         "provider_publication_time": None,
         "additions": additions,
         "removals": removals,
@@ -175,7 +191,7 @@ def publish_reviewed_stage(
         )
         cur.execute(
             "SELECT source_checksum, fetched_at, row_count, minimum_count, validation_issues, "
-            "status, published_snapshot_id, baseline_snapshot_id "
+            "status, published_snapshot_id, baseline_snapshot_id, source "
             "FROM catalog_stage WHERE stage_id = %s FOR UPDATE",
             (stage_id,),
         )
@@ -191,7 +207,11 @@ def publish_reviewed_stage(
             status,
             published_id,
             baseline_id,
+            source,
         ) = stage
+        if source not in CATALOG_TAXONOMIES:
+            raise ValueError("unsupported reviewed catalog source")
+        taxonomy = CATALOG_TAXONOMIES[source]
         if checksum != expected_checksum:
             raise ValueError("reviewed checksum does not match staged contents")
         if status == "published":
@@ -220,7 +240,7 @@ def publish_reviewed_stage(
             if suggested:
                 if decision is not None and decision != suggested:
                     raise ValueError(
-                        f"{symbol} conflicts with its established FMP alias"
+                        f"{symbol} conflicts with its established catalog alias"
                     )
                 resolved[symbol] = suggested
             elif decision == "new":
@@ -241,15 +261,15 @@ def publish_reviewed_stage(
         if set(mapped_ids) != {item[0] for item in cur.fetchall()}:
             raise ValueError("a reviewed stock ID does not exist")
         observed_on = fetched_at.astimezone(timezone.utc).date()
-        snapshot_id = f"fmp-sp500-{observed_on}-{checksum[:12]}"
+        snapshot_id = f"{source}-{observed_on}-{checksum[:12]}"
         cur.execute(
             "INSERT INTO universe_snapshot (snapshot_id, source, taxonomy, as_of, captured_at, "
             "published_at, source_checksum, validation_state) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, 'published')",
             (
                 snapshot_id,
-                SOURCE,
-                TAXONOMY,
+                source,
+                taxonomy,
                 observed_on,
                 fetched_at,
                 datetime.now(timezone.utc),
@@ -271,7 +291,7 @@ def publish_reviewed_stage(
                     (
                         observed_on - timedelta(days=1),
                         stock_id,
-                        SOURCE,
+                        source,
                         EXCHANGE,
                         symbol,
                         observed_on,
@@ -288,11 +308,11 @@ def publish_reviewed_stage(
                     symbol,
                     EXCHANGE,
                     observed_on,
-                    SOURCE,
+                    source,
                     stock_id,
                     symbol,
                     EXCHANGE,
-                    SOURCE,
+                    source,
                     observed_on,
                     observed_on,
                 ),
@@ -300,12 +320,12 @@ def publish_reviewed_stage(
             cur.execute(
                 "INSERT INTO sector (taxonomy, sector_code, sector_name) VALUES (%s, %s, %s) "
                 "ON CONFLICT (taxonomy, sector_code) DO NOTHING",
-                (TAXONOMY, sector_label, sector_label),
+                (taxonomy, sector_label, sector_label),
             )
             cur.execute(
                 "INSERT INTO universe_member (snapshot_id, stock_id, source_ticker, taxonomy, sector_code) "
                 "VALUES (%s, %s, %s, %s, %s)",
-                (snapshot_id, stock_id, symbol, TAXONOMY, sector_label),
+                (snapshot_id, stock_id, symbol, taxonomy, sector_label),
             )
         cur.execute(
             "INSERT INTO catalog_current (singleton, snapshot_id) VALUES (true, %s) "
