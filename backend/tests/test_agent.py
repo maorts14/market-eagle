@@ -339,6 +339,11 @@ def test_temporal_turn_survives_client_detachment(setup, explanation_fails):
     from temporalio.worker import Worker
 
     store, model, activities = setup
+    fallback_case = next(
+        case
+        for case in EVALUATION["cases"]
+        if case["id"] == "explanation-unavailable-after-evidence"
+    )
     if explanation_fails:
 
         def unavailable(_question, _result, _assumptions):
@@ -349,7 +354,9 @@ def test_temporal_turn_survives_client_detachment(setup, explanation_fails):
     turn = store.submit(
         conversation,
         "durable",
-        "Find the gain and dollar volume leader last month",
+        fallback_case["question"]
+        if explanation_fails
+        else "Find the gain and dollar volume leader last month",
         "2026-01-08",
     )
 
@@ -387,7 +394,20 @@ def test_temporal_turn_survives_client_detachment(setup, explanation_fails):
     assert finished["status"] == "completed"
     if explanation_fails:
         rendered = public_turn(store, finished)
-        assert rendered["trusted_result"]["rows"][0]["ticker"] == "EPSI"
+        assert finished["status"] == fallback_case["expected_status"]
+        assert (
+            rendered["trusted_result"]["rows"][0]["ticker"]
+            == fallback_case["expected_winner"]
+        )
+        assert (
+            rendered["trusted_result"]["eligible_count"]
+            == fallback_case["expected_eligible_stocks"]
+        )
+        assert (
+            rendered["trusted_result"]["catalog"]["tracked_count"]
+            == fallback_case["expected_requested_stocks"]
+        )
+        assert fallback_case["expected_explanation_unavailable"]
         assert rendered["agent_explanation"] is None
         assert rendered["error"] is None
         assert store.conversation(conversation)["active_turn_id"] is None

@@ -6,6 +6,19 @@ cases in `backend/market_eagle/agent/evaluation-v1.json` are programmatic
 scenarios and rubric prompts, not human labels or a measured quality baseline.
 No broader answer-quality threshold has been chosen or passed.
 
+The `synthetic-agent-v1.1` corpus has fixed-model checks for period, sector,
+market, and sector-excess returns; sector breadth; absolute and relative daily
+volume counts; coverage; unsupported causal and forecast answers; conversation
+isolation; and verified evidence surviving explanation failure. Run them with
+`python -m pytest backend/tests/test_agent_core_evaluation.py backend/tests/test_agent.py backend/tests/test_analytics.py`.
+Typed requests are supplied by the tests, so this run does not measure live
+interpretation, alternate wording, or semantic quality. It checks listed
+forbidden phrases literally. OHLCV field coverage and wider first-release
+vocabulary combinations still need cases and, where necessary, implementation.
+The corpus version identifies these programmatic expectations, not a release
+pass. The human review input format below is ready; no independent labels or
+calibrated evaluator results have been collected.
+
 Use UTF-8 JSON Lines for both inputs and reviews, with one object per line.
 For each live or replayed model answer, save one input record with these fields:
 

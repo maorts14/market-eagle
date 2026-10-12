@@ -63,12 +63,18 @@ cancels any active turn, then permanently removes its local records.
 The synthetic fixture is fictional and its return rankings are marked
 untrusted until the production price basis is settled. Numeric limits are
 initial values to calibrate on the homelab. The core deterministic tests run
-with `python -m pytest backend/tests/test_agent.py backend/tests/test_analytics.py`.
+with `python -m pytest backend/tests/test_agent_core_evaluation.py backend/tests/test_agent.py backend/tests/test_analytics.py`.
 The Temporal test uses the SDK's local test server. Model answer quality still
 needs human-labeled baseline cases before a broader release threshold can be
 set.
-`evaluation-v1.json` records the initial programmatic scenarios and rubric;
-its prose cases are not human labels or a calibrated semantic release gate.
+`evaluation-v1.json` (dataset `synthetic-agent-v1.1`) records programmatic
+scenarios and rubrics. The fixed-model test runs its supported query cases
+through the agent activities and synthetic fixture, checking result rows,
+coverage, evidence, unsupported decisions, and conversation isolation. It
+does not test a live model's choice of request or grade free-text meaning;
+literal forbidden-phrase checks only catch the listed strings. OHLCV field
+coverage and further v1 phrasings remain gaps. These cases are not human
+labels or a calibrated semantic release gate.
 The [answer-quality evaluation handoff](../../../knowledge-base/answer-quality-evaluation.md)
 defines the `python dev.py agent-evaluation` export, blank-review, and
 validation workflow for that pending gate. It does not assign labels or a
