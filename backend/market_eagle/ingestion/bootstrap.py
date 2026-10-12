@@ -54,6 +54,7 @@ INGEST_TABLES = (
     "alpaca_preparation_session",
     "alpaca_alias_approval",
     "ongoing_collection_approval",
+    "ongoing_reference_check",
 )
 
 
