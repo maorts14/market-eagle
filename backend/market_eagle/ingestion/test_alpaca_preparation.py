@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -14,9 +14,9 @@ import pytest
 from psycopg import sql
 from temporalio.client import WorkflowExecutionStatus
 from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
-from temporalio.exceptions import WorkflowAlreadyStartedError
+from temporalio.exceptions import ApplicationError, WorkflowAlreadyStartedError
 
-from . import alpaca_collect
+from . import alpaca_collect, worker
 from .alpaca_collect import approved_backfill_request, start_backfill
 from .alpaca_preparation import (
     approve_preparation,
@@ -29,6 +29,12 @@ from .ongoing_collection import (
     approve_ongoing_collection,
     ongoing_collection_request,
     validate_ongoing_collection_group,
+)
+from .ongoing_reference import (
+    calendar_status,
+    maintain_ongoing_reference,
+    record_reference_failure,
+    require_reference_check,
 )
 from .store import ingest_page
 
@@ -103,6 +109,44 @@ def _ongoing_full_catalog(conn):
             ],
         )
     return preparation_id
+
+
+def _reference_assets(conn, preparation_id):
+    rows = conn.execute(
+        "SELECT asset_id, symbol, exchange, name FROM alpaca_preparation_asset "
+        "WHERE preparation_id = %s",
+        (preparation_id,),
+    ).fetchall()
+    return [
+        {
+            "id": str(asset_id),
+            "symbol": symbol,
+            "exchange": exchange,
+            "name": name,
+            "status": "active",
+            "class": "us_equity",
+        }
+        for asset_id, symbol, exchange, name in rows
+    ]
+
+
+def _reference_sessions():
+    return [
+        {
+            "date": day,
+            "open_at": f"{day}T14:30:00+00:00",
+            "close_at": f"{day}T21:00:00+00:00",
+            "type": "regular",
+        }
+        for day in ("2024-01-04", "2024-01-05", "2024-01-08")
+    ] + [
+        {
+            "date": "2024-01-09",
+            "open_at": "2024-01-09T14:30:00+00:00",
+            "close_at": "2024-01-09T18:00:00+00:00",
+            "type": "half_day",
+        }
+    ]
 
 
 def test_ongoing_approval_admits_later_reviewed_sessions_without_renewal(conn):
@@ -287,6 +331,171 @@ def test_ongoing_approval_pins_explicit_provisional_source_and_rejects_sample(co
         )
     with pytest.raises(ValueError, match="held"):
         ongoing_collection_request(conn, approval_id, date(2024, 1, 4), "stable-run")
+
+
+def test_reference_maintenance_adds_sessions_and_distinguishes_closed_from_unknown(
+    conn,
+):
+    preparation_id = _ongoing_full_catalog(conn)
+    approval_id = approve_ongoing_collection(
+        conn,
+        preparation_id=preparation_id,
+        catalog_source="fmp-sp500",
+        reviewer="operator",
+        review_note="reviewed",
+    )
+    checked_at = datetime(2024, 1, 4, 12, tzinfo=timezone.utc)
+    assets = _reference_assets(conn, preparation_id)
+    sessions = _reference_sessions()
+    assert calendar_status(conn, approval_id, date(2024, 1, 6), checked_at) == {
+        "status": "unknown"
+    }
+    result = maintain_ongoing_reference(
+        conn,
+        approval_id=approval_id,
+        coverage_start=date(2024, 1, 4),
+        coverage_end=date(2024, 1, 9),
+        checked_at=checked_at,
+        assets=assets,
+        sessions=sessions,
+    )
+    assert result["matched_assets"] == 450
+    assert result["sessions_added"] == 2
+    assert calendar_status(conn, approval_id, date(2024, 1, 6), checked_at) == {
+        "status": "closed"
+    }
+    assert calendar_status(conn, approval_id, date(2024, 1, 10), checked_at) == {
+        "status": "unknown"
+    }
+    assert calendar_status(conn, approval_id, date(2024, 1, 9), checked_at) == {
+        "status": "session",
+        "session": {
+            "date": "2024-01-09",
+            "open_at": "2024-01-09T14:30:00+00:00",
+            "close_at": "2024-01-09T18:00:00+00:00",
+            "type": "half_day",
+        },
+    }
+    require_reference_check(conn, approval_id, date(2024, 1, 4), checked_at)
+    assert (
+        maintain_ongoing_reference(
+            conn,
+            approval_id=approval_id,
+            coverage_start=date(2024, 1, 4),
+            coverage_end=date(2024, 1, 9),
+            checked_at=checked_at,
+            assets=assets,
+            sessions=sessions,
+        )["sessions_added"]
+        == 0
+    )
+
+
+def test_reference_drift_or_failed_probe_holds_price_admission(conn):
+    preparation_id = _ongoing_full_catalog(conn)
+    approval_id = approve_ongoing_collection(
+        conn,
+        preparation_id=preparation_id,
+        catalog_source="fmp-sp500",
+        reviewer="operator",
+        review_note="reviewed",
+    )
+    checked_at = datetime(2024, 1, 4, 12, tzinfo=timezone.utc)
+    assets = _reference_assets(conn, preparation_id)
+    sessions = _reference_sessions()
+    changed = [*assets]
+    changed[0] = {**changed[0], "symbol": "CHANGED"}
+    with pytest.raises(ValueError, match="identity"):
+        maintain_ongoing_reference(
+            conn,
+            approval_id=approval_id,
+            coverage_start=date(2024, 1, 4),
+            coverage_end=date(2024, 1, 9),
+            checked_at=checked_at,
+            assets=changed,
+            sessions=sessions,
+        )
+    assert (
+        conn.execute("SELECT count(*) FROM ongoing_reference_check").fetchone()[0] == 0
+    )
+    with pytest.raises(ValueError, match="calendar"):
+        maintain_ongoing_reference(
+            conn,
+            approval_id=approval_id,
+            coverage_start=date(2024, 1, 4),
+            coverage_end=date(2024, 1, 9),
+            checked_at=checked_at,
+            assets=assets,
+            sessions=[row for row in sessions if row["date"] != "2024-01-05"],
+        )
+    maintain_ongoing_reference(
+        conn,
+        approval_id=approval_id,
+        coverage_start=date(2024, 1, 4),
+        coverage_end=date(2024, 1, 9),
+        checked_at=checked_at,
+        assets=assets,
+        sessions=sessions,
+    )
+    record_reference_failure(conn, approval_id, checked_at.replace(minute=1))
+    with pytest.raises(ValueError, match="reference check"):
+        require_reference_check(conn, approval_id, date(2024, 1, 4), checked_at)
+    assert calendar_status(conn, approval_id, date(2024, 1, 6), checked_at) == {
+        "status": "unknown"
+    }
+    with pytest.raises(ValueError, match="reference check"):
+        require_reference_check(
+            conn, approval_id, date(2024, 1, 4), checked_at + timedelta(days=1)
+        )
+
+
+def test_reference_activity_records_failed_check_without_live_provider(
+    conn, monkeypatch
+):
+    preparation_id = _ongoing_full_catalog(conn)
+    approval_id = approve_ongoing_collection(
+        conn,
+        preparation_id=preparation_id,
+        catalog_source="fmp-sp500",
+        reviewer="operator",
+        review_note="reviewed",
+    )
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz):
+            return datetime(2024, 1, 4, 12, tzinfo=tz)
+
+    assets = _reference_assets(conn, preparation_id)
+    assets[0]["exchange"] = "CHANGED"
+    monkeypatch.setattr(worker, "datetime", FixedDateTime)
+    schema = conn.execute("SELECT current_schema()").fetchone()[0]
+    connect = psycopg.connect
+
+    def connect_in_test_schema(_url):
+        separate = connect(os.environ["INGESTION_TEST_DATABASE_URL"])
+        separate.execute(
+            sql.SQL("SET search_path TO {}, public").format(sql.Identifier(schema))
+        )
+        separate.commit()
+        return separate
+
+    monkeypatch.setattr(worker.psycopg, "connect", connect_in_test_schema)
+    monkeypatch.setattr(worker, "_pace_provider", lambda: None)
+    monkeypatch.setattr(worker, "fetch_assets", lambda *_args: assets)
+    monkeypatch.setattr(worker, "fetch_calendar", lambda *_args: _reference_sessions())
+    monkeypatch.setenv("DATABASE_URL", "unused")
+    monkeypatch.setenv("ALPACA_API_KEY_ID", "test-key")
+    monkeypatch.setenv("ALPACA_API_SECRET_KEY", "test-secret")
+    with pytest.raises(ApplicationError, match="identity"):
+        worker.refresh_ongoing_reference({"approval_id": approval_id})
+    assert (
+        conn.execute(
+            "SELECT status FROM ongoing_reference_check WHERE approval_id = %s",
+            (approval_id,),
+        ).fetchone()[0]
+        == "failed"
+    )
 
 
 @pytest.fixture

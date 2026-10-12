@@ -101,7 +101,7 @@ def approve_ongoing_collection(
     return str(approval_id)
 
 
-def _admit_target(
+def _approved_reference_context(
     cur: psycopg.Cursor, approval_id: str, target: date
 ) -> tuple[str, str]:
     cur.execute(
@@ -142,6 +142,13 @@ def _admit_target(
         raise ValueError("ongoing collection approval or current catalog is held")
     preparation_id, snapshot_id = str(row[0]), row[1]
     _check_full_mappings(cur, preparation_id, snapshot_id, target)
+    return preparation_id, snapshot_id
+
+
+def _admit_target(
+    cur: psycopg.Cursor, approval_id: str, target: date
+) -> tuple[str, str]:
+    preparation_id, snapshot_id = _approved_reference_context(cur, approval_id, target)
     cur.execute(
         "SELECT open_at, close_at FROM trading_session WHERE exchange = %s "
         "AND session_date = %s AND calendar_source = 'alpaca-trading-calendar' "

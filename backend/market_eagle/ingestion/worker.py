@@ -20,9 +20,23 @@ from temporalio.worker import Worker
 
 from .alpaca import AlpacaRequestError, historical_pages, page_rows
 from .alpaca_preparation import validate_collection_group
+from .alpaca_reference import (
+    AlpacaReferenceError,
+    AlpacaReferenceTransportError,
+    fetch_assets,
+    fetch_calendar,
+)
 from .fmp import FmpRequestError, fetch_constituents
 from .fmp_stage import stage_constituents
 from .ongoing_collection import validate_ongoing_collection_group
+from .ongoing_reference import (
+    NEW_YORK,
+    calendar_status,
+    maintain_ongoing_reference,
+    record_reference_failure,
+    require_reference_check,
+    validate_reference_approval,
+)
 from .store import ingest_page, missing_pairs, publish_catalog, read_csv
 from .workflows import (
     CatalogPublishWorkflow,
@@ -141,6 +155,10 @@ def collect_group(request: dict) -> dict:
                 if "approval_id" in request
                 else validate_collection_group(conn, request)
             )
+            if "approval_id" in request:
+                require_reference_check(
+                    conn, request["approval_id"], start, datetime.now(timezone.utc)
+                )
         except ValueError as exc:
             raise ApplicationError(str(exc), non_retryable=True) from exc
         conn.commit()  # End the alias read so each following page has its own transaction.
@@ -225,6 +243,65 @@ def collect_group(request: dict) -> dict:
         }
 
 
+@activity.defn(name="refresh_ongoing_reference")
+def refresh_ongoing_reference(request: dict) -> dict:
+    """Check today's current assets and maintain a bounded calendar window."""
+    approval_id = request["approval_id"]
+    key_id = os.environ.get("ALPACA_API_KEY_ID")
+    secret = os.environ.get("ALPACA_API_SECRET_KEY")
+    checked_at = datetime.now(timezone.utc)
+    checked_on = checked_at.astimezone(NEW_YORK).date()
+    start, end = checked_on - timedelta(days=1), checked_on + timedelta(days=14)
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        try:
+            validate_reference_approval(conn, approval_id, checked_at)
+        except ValueError as exc:
+            raise ApplicationError(str(exc), non_retryable=True) from exc
+        conn.commit()
+        try:
+            if not key_id or not secret:
+                raise ValueError("Alpaca credentials are required for reference checks")
+            with httpx.Client() as client:
+                _pace_provider()
+                assets = fetch_assets(client, key_id, secret)
+                _pace_provider()
+                sessions = fetch_calendar(client, key_id, secret, start, end)
+            return maintain_ongoing_reference(
+                conn,
+                approval_id=approval_id,
+                coverage_start=start,
+                coverage_end=end,
+                checked_at=checked_at,
+                assets=assets,
+                sessions=sessions,
+            )
+        except (
+            AlpacaReferenceError,
+            AlpacaReferenceTransportError,
+            ValueError,
+            TypeError,
+        ) as exc:
+            record_reference_failure(conn, approval_id, datetime.now(timezone.utc))
+            retryable = isinstance(exc, AlpacaReferenceTransportError) or (
+                isinstance(exc, AlpacaReferenceError)
+                and exc.status_code in (429, 500, 502, 503, 504)
+            )
+            raise ApplicationError(str(exc), non_retryable=not retryable) from exc
+
+
+@activity.defn(name="read_ongoing_calendar")
+def read_ongoing_calendar(request: dict) -> dict:
+    """Distinguish a reviewed session, closed date, and missing coverage."""
+    target = date.fromisoformat(request["target_date"])
+    with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+        try:
+            return calendar_status(
+                conn, request["approval_id"], target, datetime.now(timezone.utc)
+            )
+        except ValueError as exc:
+            raise ApplicationError(str(exc), non_retryable=True) from exc
+
+
 @activity.defn(name="check_coverage")
 def check_coverage(request: dict) -> dict:
     start, end = _request_dates(request)
@@ -267,7 +344,12 @@ async def main() -> None:
         client,
         task_queue="market-session",
         workflows=[SessionReconcileWorkflow, SessionRefreshWorkflow],
-        activities=[collect_group, check_coverage],
+        activities=[
+            collect_group,
+            check_coverage,
+            refresh_ongoing_reference,
+            read_ongoing_calendar,
+        ],
         activity_executor=executor,
         max_concurrent_activities=1,
     )
