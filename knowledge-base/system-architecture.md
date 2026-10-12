@@ -10,7 +10,7 @@ Status: **definition baseline**, with accepted choices and still-proposed mechan
 
 | Boundary | Responsibility | Data crossing it |
 | --- | --- | --- |
-| Catalog source → catalog ingestion | Obtain current S&P 500 membership and sector labels. Source choice is open. | Dated source rows: ticker, company name, sector, source metadata. |
+| Catalog source → catalog ingestion | For the first private version, import a dated public constituent list, cross-check ETF holdings and official change notices, and manually review it. | Dated source rows: ticker, company name, sector, source/review metadata, provisional label. |
 | Price provider → bar ingestion | Obtain five years of provider daily OHLCV and refresh the current cumulative day bar, including after-close updates to the same bar where available. Alpaca Basic is a candidate, not selected. | Requested symbols/dates/feed/adjustment; returned bar pages and provider timestamps. |
 | Ingestion → application PostgreSQL | Resolve provider ticker and trading date to a stable stock ID; validate values; save normalized observations and provenance. | Catalog snapshots, daily bar revisions, and selected current bars. Full response bodies are not retained. |
 | Application PostgreSQL → analytical service | Read one pinned current catalog snapshot and a consistent selection of validated bars for the requested source and price basis. | Member/sector rows, two comparison closes per eligible stock, coverage and freshness metadata. |
@@ -45,7 +45,7 @@ The first backend runs privately on the creator's homelab through Tailscale. Doc
 
 ## Unresolved contracts that affect implementation
 
-- Authenticated behavior and rights of the price and catalog providers.
+- Authenticated behavior and rights of the price provider, plus source terms and accuracy limits for the private public-list catalog.
 - Price adjustment basis and corporate-action return semantics. A ranking must never silently mix bases or feeds.
 - Persistence and query-selection mechanics for provisional current-day bars, plus freshness/fallback thresholds. Inclusion for a range containing today is settled.
 - Catalog change review policy and the source of valid listing dates for coverage reconciliation.
