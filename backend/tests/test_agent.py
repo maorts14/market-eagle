@@ -333,11 +333,18 @@ def test_unsupported_and_clarification_are_terminal_without_evidence(setup):
     assert store.conversation(conversation)["active_turn_id"] is None
 
 
-def test_temporal_turn_survives_client_detachment(setup):
+@pytest.mark.parametrize("explanation_fails", [False, True])
+def test_temporal_turn_survives_client_detachment(setup, explanation_fails):
     from temporalio.testing import WorkflowEnvironment
     from temporalio.worker import Worker
 
-    store, _, activities = setup
+    store, model, activities = setup
+    if explanation_fails:
+
+        def unavailable(_question, _result, _assumptions):
+            raise RuntimeError("explanation unavailable")
+
+        model.explain = unavailable
     conversation = store.create_conversation()
     turn = store.submit(
         conversation,
@@ -376,7 +383,14 @@ def test_temporal_turn_survives_client_detachment(setup):
                     await reconnected.result()
 
     asyncio.run(run())
-    assert store.turn(turn["id"])["status"] == "completed"
+    finished = store.turn(turn["id"])
+    assert finished["status"] == "completed"
+    if explanation_fails:
+        rendered = public_turn(store, finished)
+        assert rendered["trusted_result"]["rows"][0]["ticker"] == "EPSI"
+        assert rendered["agent_explanation"] is None
+        assert rendered["error"] is None
+        assert store.conversation(conversation)["active_turn_id"] is None
 
 
 def test_cancel_requested_reconciles_after_crash(setup):

@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import TemporalError
+from temporalio.exceptions import ActivityError, TemporalError
 
 
 @workflow.defn
@@ -59,9 +59,15 @@ class AgentTurnWorkflow:
                 outcome = await call("agent_execute", turn_id, decision)
                 if outcome["kind"] == "verified":
                     evidence_id = outcome["evidence_id"]
-                    explanation = await call(
-                        "agent_explain", turn_id, decision, evidence_id, seconds=60
-                    )
+                    try:
+                        explanation = await call(
+                            "agent_explain", turn_id, decision, evidence_id, seconds=60
+                        )
+                    except ActivityError:
+                        workflow.logger.warning(
+                            "Narrative explanation unavailable for turn %s", turn_id
+                        )
+                        explanation = None
                     await call(
                         "agent_finish",
                         turn_id,

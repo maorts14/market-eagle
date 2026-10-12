@@ -39,6 +39,21 @@ describe('research result rendering', () => {
     expect(html).not.toContain('Sector return')
     expect(html).not.toContain('Invalid Date')
     expect(html).not.toContain('Return rankings remain untrusted')
+    expect(html).toContain('Interpretation unavailable')
+  })
+
+  it('keeps a verified result visible while showing a legacy failed turn status', () => {
+    const turn: AgentTurn = {
+      turn_id: 'turn-failed', conversation_id: 'conversation-1', question: 'Which stock qualified?',
+      status: 'failed', decision: null, trusted_result: frequencyResult(), evidence_id: 'evidence-failed',
+      agent_explanation: null, error: 'Explanation activity failed',
+    }
+
+    const html = renderToStaticMarkup(<TurnCard turn={turn} />)
+
+    expect(html).toContain('Turn failed after verification')
+    expect(html).toContain('Verified calculation')
+    expect(html).toContain('DELT')
   })
 
   it('shows every returned rank and the selected measure even when rows also include returns', () => {
