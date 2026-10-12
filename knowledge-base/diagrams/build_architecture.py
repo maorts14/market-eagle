@@ -207,7 +207,7 @@ p.card("market_eagle", 640, 345, 325, 150, "Market Eagle",
 p.card("alpaca", 1230, 225, 270, 112, "Market-data provider",
        "Alpaca Free candidate · daily OHLCV", "amber", "amber_edge", icon="cloud")
 p.card("constituents", 1230, 415, 270, 112, "Constituent source",
-       "S&amp;P 500 membership and sectors · FMP candidate", "amber", "amber_edge",
+       "Public list · manually reviewed · provisional", "amber", "amber_edge",
        icon="cloud")
 p.card("model", 1230, 605, 270, 112, "Model provider",
        "Later agent interpretation and answer drafting", "purple", "purple_edge",
@@ -237,7 +237,7 @@ p.card("temporal", 380, 220, 300, 85, "Temporal service",
 p.card("temporal_sql", 1130, 220, 285, 85, "Temporal SQL",
        "Workflow history + visibility only", "purple", "purple_edge", icon="database")
 p.card("catalog_source", 80, 390, 215, 80, "Catalog source",
-       "Current members + sectors", "amber", "amber_edge", icon="cloud")
+       "Reviewed public list · provisional", "amber", "amber_edge", icon="cloud")
 p.card("price_source", 80, 490, 215, 80, "Price provider",
        "Daily prices + volume", "amber", "amber_edge", icon="cloud")
 p.card("catalog_worker", 350, 390, 250, 80, "Catalog ingestion",
@@ -278,15 +278,15 @@ p.footer("02 / 07", "Temporal controls collection above the data path   ·   Cat
 
 # 03 — Ordered catalog and price ingestion.
 p = Page("collection", "03 · Collection", "Collection and ingestion",
-         "Each provider response passes through validation before publication; Temporal controls runs from above.")
+         "Each source input passes through validation before publication; Temporal controls runs from above.")
 p.group("collection_control", 55, 190, 1490, 120, "CONTROL · schedule, retry, progress", fill="gray")
 p.group("catalog_flow", 55, 325, 1490, 195, "CATALOG FLOW · current members and sectors", fill="gray")
 p.group("price_flow", 55, 540, 1490, 260, "PRICE FLOW · five-year backfill, session refresh, reconciliation", fill="gray")
 p.card("collection_temporal", 605, 215, 390, 75, "Temporal collection controller",
        "Starts runs · retries activities · tracks progress", "purple", "purple_edge", icon="clock")
 p.card("catalog_provider", 80, 380, 200, 100, "1 · Catalog source",
-       "Members + sectors", "amber", "amber_edge", icon="cloud")
-p.card("catalog_fetch", 330, 380, 185, 100, "2 · Fetch rows",
+       "Dated public list · provisional", "amber", "amber_edge", icon="cloud")
+p.card("catalog_fetch", 330, 380, 185, 100, "2 · Import rows",
        "Dated source rows", icon="server")
 p.card("catalog_match", 565, 380, 240, 100, "3 · Match stock IDs",
        "Ticker/exchange → stable stock ID", icon="server")

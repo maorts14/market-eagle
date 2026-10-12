@@ -65,7 +65,7 @@
         <mxCell id="constituents_icon_cloud" value="" style="shape=cloud;rounded=0;html=1;fillColor=#FFFFFF;strokeColor=#B77924;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="1243" y="458" width="34" height="26" as="geometry" />
         </mxCell>
-        <mxCell id="constituents_text" value="&lt;b&gt;Constituent source&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;S&amp;amp;P 500 membership and sectors · FMP candidate&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=16;fontColor=#15263B;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
+        <mxCell id="constituents_text" value="&lt;b&gt;Constituent source&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Public list · manually reviewed · provisional&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=16;fontColor=#15263B;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
           <mxGeometry x="1286" y="421" width="206" height="100" as="geometry" />
         </mxCell>
         <mxCell id="model" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#F1EEFB;strokeColor=#7863B0;strokeWidth=1.5;fontFamily=Arial;fontSize=18;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
@@ -175,7 +175,7 @@
         <mxCell id="catalog_source_icon_cloud" value="" style="shape=cloud;rounded=0;html=1;fillColor=#FFFFFF;strokeColor=#B77924;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="93" y="417" width="34" height="26" as="geometry" />
         </mxCell>
-        <mxCell id="catalog_source_text" value="&lt;b&gt;Catalog source&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Current members + sectors&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=16;fontColor=#15263B;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
+        <mxCell id="catalog_source_text" value="&lt;b&gt;Catalog source&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Reviewed public list · provisional&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=16;fontColor=#15263B;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
           <mxGeometry x="136" y="396" width="151" height="68" as="geometry" />
         </mxCell>
         <mxCell id="price_source" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#FFF5DF;strokeColor=#B77924;strokeWidth=1.5;fontFamily=Arial;fontSize=18;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
@@ -369,7 +369,7 @@
         <mxCell id="title" value="Collection and ingestion" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=30;fontColor=#15263B;fontStyle=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="60" y="40" width="1450" height="48" as="geometry" />
         </mxCell>
-        <mxCell id="subtitle" value="Each provider response passes through validation before publication; Temporal controls runs from above." style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=15;fontColor=#61758A;fontStyle=0;align=left;verticalAlign=middle;" vertex="1" parent="1">
+        <mxCell id="subtitle" value="Each source input passes through validation before publication; Temporal controls runs from above." style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=15;fontColor=#61758A;fontStyle=0;align=left;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="60" y="94" width="1460" height="42" as="geometry" />
         </mxCell>
         <mxCell id="divider" value="" style="rounded=0;arcSize=0;whiteSpace=wrap;html=1;fillColor=#9DAFBE;strokeColor=#9DAFBE;strokeWidth=1.5;fontFamily=Arial;fontSize=18;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;" vertex="1" parent="1">
@@ -414,7 +414,7 @@
         <mxCell id="catalog_provider_icon_cloud" value="" style="shape=cloud;rounded=0;html=1;fillColor=#FFFFFF;strokeColor=#B77924;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="93" y="417" width="34" height="26" as="geometry" />
         </mxCell>
-        <mxCell id="catalog_provider_text" value="&lt;b&gt;1 · Catalog source&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Members + sectors&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=16;fontColor=#15263B;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
+        <mxCell id="catalog_provider_text" value="&lt;b&gt;1 · Catalog source&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Dated public list · provisional&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=16;fontColor=#15263B;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
           <mxGeometry x="136" y="386" width="136" height="88" as="geometry" />
         </mxCell>
         <mxCell id="catalog_fetch" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#EAF2FF;strokeColor=#3E78C7;strokeWidth=1.5;fontFamily=Arial;fontSize=18;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">
@@ -438,7 +438,7 @@
         <mxCell id="catalog_fetch_icon_light_2" value="" style="shape=ellipse;rounded=0;html=1;fillColor=#3E78C7;strokeColor=#3E78C7;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="348" y="440" width="3" height="3" as="geometry" />
         </mxCell>
-        <mxCell id="catalog_fetch_text" value="&lt;b&gt;2 · Fetch rows&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Dated source rows&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=16;fontColor=#15263B;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
+        <mxCell id="catalog_fetch_text" value="&lt;b&gt;2 · Import rows&lt;/b&gt;&lt;br&gt;&lt;font color='#61758A'&gt;Dated source rows&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontFamily=Arial;fontSize=16;fontColor=#15263B;align=left;verticalAlign=middle;spacing=0;" vertex="1" parent="1">
           <mxGeometry x="386" y="386" width="121" height="88" as="geometry" />
         </mxCell>
         <mxCell id="catalog_match" value="" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#EAF2FF;strokeColor=#3E78C7;strokeWidth=1.5;fontFamily=Arial;fontSize=18;fontColor=#15263B;align=center;verticalAlign=middle;spacing=12;card=1;" vertex="1" parent="1">

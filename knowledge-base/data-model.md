@@ -15,14 +15,14 @@ Status: **proposed logical model**, not final SQL DDL. Provider behavior, price 
 | --- | --- | --- |
 | security | stock ID (UUID), company/name, share-class identity | One listed share line; a company with two tracked share classes has two stock IDs. |
 | security_symbol | stock ID, ticker, exchange, valid-from/to, source | Maps a provider ticker **at a trading date** to a stock ID. Historical aliases remain after a rename. Overlapping active ticker/exchange claims are held for review. |
-| universe_snapshot | snapshot ID, source, captured-at, published-at, source checksum, validation state | Immutable catalog publication. “Latest published” is a pointer to one snapshot, changed only after validation. |
+| universe_snapshot | snapshot ID, source ID, source URL/revision, captured-at, reviewed-at, published-at, source checksum, validation state, verification label | Immutable catalog publication. The first private public-list snapshot labels membership and sectors `provisional`; “latest published” is a pointer changed only after manual review. |
 | universe_member | snapshot ID + stock ID, source ticker, **sector code in this snapshot** | The exact tracked membership and current sector that one request uses. This makes first-release current-sector grouping reproducible within a request. |
 | sector | taxonomy/version + sector code, display name | Defines what a sector code means for the source/taxonomy used. |
 | sector_assignment | stock ID, sector code, effective-from/to, source snapshot | Retains observed classification changes. Historical sector reconstruction is deferred; the first query joins universe_member instead. |
 | listing_period | stock ID, exchange, valid-from/to, source | Proposed evidence that a stock was actually listed/tradable; needed to distinguish pre-listing dates from missing provider bars. Source feasibility is open. |
 | trading_session | exchange + session date, open/close UTC, session type | Calendar for valid dates, half days, schedule timing, and comparison-close resolution. |
 
-Publication is transactional: write all validated member-sector rows, then change the “latest published” pointer. An incomplete or held catalog cannot be queried as current. The catalog provider and change-review thresholds remain open.
+Publication is transactional: write all validated member-sector rows, then change the “latest published” pointer. An incomplete or held catalog cannot be queried as current. The first private catalog uses a distinct public-list source ID and records its review date, sector taxonomy, share-line mappings, and unresolved discrepancies. A published private snapshot remains **provisional** in answers; publication means the operator accepted it for this private use, not that index membership is certified. The exact licensed provider and stronger update rules are [for later](https://github.com/maorts14/market-eagle/issues/57).
 
 ## Market observations in application PostgreSQL
 
