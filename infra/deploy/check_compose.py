@@ -46,6 +46,8 @@ def check() -> None:
     web_args = all_services["web"]["build"]["args"]
     assert web_args["VITE_AGENT_MODE"] == "api"
     assert web_args["VITE_EXPLORER_MODE"] == "api"
+    assert "VITE_PILOT_START" in web_args
+    assert "VITE_PILOT_END" in web_args
     assert all_services["api"]["environment"]["DATABASE_URL"].startswith(
         "postgresql://market_eagle_reader@postgres:"
     )

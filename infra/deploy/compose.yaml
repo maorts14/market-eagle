@@ -106,6 +106,8 @@ services:
       args:
         VITE_AGENT_MODE: api
         VITE_EXPLORER_MODE: api
+        VITE_PILOT_START: ${VITE_PILOT_START:-}
+        VITE_PILOT_END: ${VITE_PILOT_END:-}
         SOURCE_REVISION: ${SOURCE_REVISION:?set SOURCE_REVISION}
     depends_on:
       api:
